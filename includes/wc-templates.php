@@ -65,8 +65,8 @@ class WA_Templates {
 
         $options = array( '' => __( 'Select...', 'whatsapp-connector' ) );
 
-        if ( ! empty( $data['Result']['data'] ) && is_array( $data['Result']['data'] ) ) {
-            foreach ( $data['Result']['data'] as $item ) {
+        if ( ! empty( $data['result']['data'] ) && is_array( $data['result']['data'] ) ) {
+            foreach ( $data['result']['data'] as $item ) {
                 if ( isset( $item['id'], $item['templateName'] ) ) {
                     $options[ $item['id'] ] = $item['templateName'];
                 }

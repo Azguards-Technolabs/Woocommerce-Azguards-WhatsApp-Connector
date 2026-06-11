@@ -22,6 +22,8 @@ require_once plugin_dir_path( __FILE__ ) . 'sendMessage/user-register.php';
 require_once plugin_dir_path( __FILE__ ) . 'sendMessage/helper.php';
 require_once plugin_dir_path( __FILE__ ) . 'sendMessage/woocommerce-hooks.php';
 require_once plugin_dir_path( __FILE__ ) . 'admin/authentication/validate-credentials.php';
+require_once plugin_dir_path( __FILE__ ) . 'includes/wc-ajax-templates.php';
+require_once plugin_dir_path( __FILE__ ) . 'includes/wc-ajax-campaigns.php';
 
 /**
  * Set plugin default values on activation.

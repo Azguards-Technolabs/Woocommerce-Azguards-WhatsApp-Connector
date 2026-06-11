@@ -3,16 +3,17 @@ jQuery(document).ready(function ($) {
         return;
     }
 
-    function updateLivePreview(container) {
-        var headerText = container.find('.wa-bind-header').val() || '';
-        var footerText = container.find('.wa-bind-footer').val() || '';
+    function updatePreview() {
+        var container = $('.wa-template-wrap');
+        var hookType = $('#wa_current_hook').val() || 'order_shipment';
 
-        container.find('.wa-preview-header').text(headerText);
-        container.find('.wa-preview-footer').text(footerText);
+        var headerType = $('#wa_header_type').val() || 'TEXT';
+        var headerText = $('#wa_header_text').val() || '';
+        var footerText = $('#wa_footer_text').val() || '';
+        var bodyText = $('#wa_message_body').val() || '';
 
-        // Update Body
-        var bodyText = container.find('.wa-bind-body').val() || '';
-        var hookType = container.find('.wa_current_hook').val() || 'order_shipment';
+        $('#preview_header').text(headerText);
+        $('#preview_footer').text(footerText);
 
         // Demo value replacements
         bodyText = bodyText.replace(/\{\{customer_firstname\}\}/g, 'Zubair');
@@ -20,64 +21,94 @@ jQuery(document).ready(function ($) {
         bodyText = bodyText.replace(/\{\{increment_id\}\}/g, '10001');
         bodyText = bodyText.replace(/\{\{order\.increment_id\}\}/g, '10001');
 
-        // Hook Specifics
         if (hookType === 'order_shipment') {
             bodyText = bodyText.replace(/\{\{tracking_number\}\}/g, 'CA-123456');
-            bodyText = bodyText.replace(/\{\{shipment\.tracking_number\}\}/g, 'CA-123456');
             bodyText = bodyText.replace(/\{\{carrier_name\}\}/g, 'FedEx');
-            bodyText = bodyText.replace(/\{\{shipment\.carrier_name\}\}/g, 'FedEx');
         } else if (hookType === 'order_created') {
             bodyText = bodyText.replace(/\{\{order\.grand_total\}\}/g, '$150.00');
-            // Mock Item loop parsing
             bodyText = bodyText.replace(/\{\{#items\}\}([\s\S]*?)\{\{\/items\}\}/g, function (match, p1) {
                 var item1 = p1.replace(/\{\{items\.name\}\}/g, 'Classic T-Shirt').replace(/\{\{items\.qty_ordered\}\}/g, '1').replace(/\{\{items\.row_total\}\}/g, '$50.00');
                 var item2 = p1.replace(/\{\{items\.name\}\}/g, 'Blue Jeans').replace(/\{\{items\.qty_ordered\}\}/g, '2').replace(/\{\{items\.row_total\}\}/g, '$100.00');
                 return item1 + '\n' + item2;
             });
-        } else if (hookType === 'order_invoice') {
-            bodyText = bodyText.replace(/\{\{invoice\.increment_id\}\}/g, 'INV-10001');
-            bodyText = bodyText.replace(/\{\{invoice\.grand_total\}\}/g, '$150.00');
-        } else if (hookType === 'order_creditmemo') {
-            bodyText = bodyText.replace(/\{\{creditmemo\.increment_id\}\}/g, 'CM-10001');
-            bodyText = bodyText.replace(/\{\{creditmemo\.grand_total\}\}/g, '$50.00');
         }
 
-        // bold markers * * -> <b> </b>
         bodyText = bodyText.replace(/\*(.*?)\*/g, '<b>$1</b>');
-        // Attach events
-        $('#wa_header_text, #wa_message_body, #wa_footer_text').on('input', updatePreview);
-        $('#wa_enable_buttons').on('change', updatePreview);
+        bodyText = bodyText.replace(/\n/g, '<br>');
+        $('#preview_body').html(bodyText);
 
-        $(document).on('input', '.wa-button-text', updatePreview);
-        $(document).on('change', '.wa-button-type', updatePreview);
+        // Buttons preview
+        var buttonsHtml = '';
+        if ($('#wa_enable_buttons').is(':checked')) {
+            $('.wa-button-item').each(function () {
+                var btnText = $(this).find('.wa-button-text').val() || 'Button';
+                var btnType = $(this).find('.wa-button-type').val();
+                var icon = btnType === 'URL' ? '&#128279;' : '&#10149;';
+                buttonsHtml += '<div class="wa-preview-btn"><span class="wa-btn-icon">' + icon + '</span> ' + btnText + '</div>';
+            });
+        }
+        $('#preview_buttons').html(buttonsHtml);
+    }
 
-        // Add button logic
-        $('#wa_add_button').on('click', function () {
-            var numButtons = $('.wa-button-item').length;
-            if (numButtons < 3) {
-                var clone = $('.wa-button-item').first().clone();
-                clone.find('input').val('');
-                $('#wa_buttons_container').append(clone);
-                updatePreview();
-            } else {
-                alert('Maximum 3 buttons allowed.');
-            }
-        });
+    $('#wa_header_text, #wa_message_body, #wa_footer_text').on('input', updatePreview);
+    $('#wa_enable_buttons').on('change', updatePreview);
+    $(document).on('input', '.wa-button-text', updatePreview);
+    $(document).on('change', '.wa-button-type', updatePreview);
 
-        $(document).on('click', '.wa-remove-button', function () {
-            if ($('.wa-button-item').length > 1) {
-                $(this).closest('.wa-button-item').remove();
-                updatePreview();
-            } else {
-                alert('You must have at least one button if Enable Buttons is Yes.');
-            }
-        });
-
-        $('#wa_save_template').on('click', function () {
-            $(this).text('Saving...');
-            setTimeout(() => { $(this).text('Save Template'); alert("Template configuration saved locally!"); }, 500);
-        });
-
-        // Initial render
-        updatePreview();
+    $('#wa_add_button').on('click', function () {
+        if ($('.wa-button-item').length < 3) {
+            var clone = $('.wa-button-item').first().clone();
+            clone.find('input').val('');
+            $('#wa_buttons_container').append(clone);
+            updatePreview();
+        } else {
+            alert('Maximum 3 buttons allowed.');
+        }
     });
+
+    $(document).on('click', '.wa-remove-button', function () {
+        if ($('.wa-button-item').length > 1) {
+            $(this).closest('.wa-button-item').remove();
+            updatePreview();
+        } else {
+            alert('At least one button is required if Enabled.');
+        }
+    });
+
+    $('#wa_save_template').on('click', function () {
+        var $btn = $(this);
+        $btn.text('Saving...').prop('disabled', true);
+
+        var buttonsData = [];
+        $('.wa-button-item').each(function () {
+            buttonsData.push({
+                type: $(this).find('.wa-button-type').val(),
+                text: $(this).find('.wa-button-text').val(),
+                url: $(this).find('.wa-button-url').val()
+            });
+        });
+
+        $.post(ajaxurl, {
+            action: 'wa_save_template_config',
+            hook_type: $('#wa_current_hook').val(),
+            header_type: $('#wa_header_type').val(),
+            header_text: $('#wa_header_text').val(),
+            message_body: $('#wa_message_body').val(),
+            footer_text: $('#wa_footer_text').val(),
+            enable_buttons: $('#wa_enable_buttons').is(':checked') ? 'yes' : 'no',
+            buttons_data: JSON.stringify(buttonsData)
+        }, function (response) {
+            $btn.text('Save Template').prop('disabled', false);
+            if (response.success) {
+                alert(response.data.message);
+            } else {
+                alert('Error: ' + response.data.message);
+            }
+        }).fail(function () {
+            $btn.text('Save Template').prop('disabled', false);
+            alert('Connection error');
+        });
+    });
+
+    updatePreview();
+});

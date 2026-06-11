@@ -3,19 +3,26 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-// Dummy processing logic for demo
-$campaigns = [
-    ['id' => 1, 'name' => 'demo_test_sat_may', 'template' => 'order_delivered', 'groups' => '', 'time' => 'May 15, 2026 7:10:00 AM', 'status' => 'paused'],
-    ['id' => 2, 'name' => 'Weekend Food Offer', 'template' => 'abandoned_cart_reminder', 'groups' => 'General', 'time' => 'May 30, 2026 6:03:00 AM', 'status' => 'SCHEDULED'],
-    ['id' => 3, 'name' => 'Customer Loyalty Offer', 'template' => 'order_confirmation', 'groups' => 'Retailer', 'time' => 'May 29, 2026 6:06:00 AM', 'status' => 'SCHEDULED'],
-    ['id' => 4, 'name' => 'Premium Villa Launch', 'template' => 'abandoned_cart_reminder', 'groups' => 'Retailer', 'time' => 'May 29, 2026 6:16:00 AM', 'status' => 'SCHEDULED'],
-];
+global $wpdb;
+$table_campaigns = $wpdb->prefix . 'azguards_whatsapp_campaigns';
+$table_templates = $wpdb->prefix . 'azguards_whatsapp_templates';
+
+// If table doesn't exist yet, we prevent fatals
+if ( $wpdb->get_var( "SHOW TABLES LIKE '$table_campaigns'" ) != $table_campaigns ) {
+    $campaigns = [];
+} else {
+    $campaigns = $wpdb->get_results( "
+        SELECT c.*, t.template_name 
+        FROM $table_campaigns c
+        LEFT JOIN $table_templates t ON c.template_entity_id = t.entity_id
+        ORDER BY c.created_at DESC
+    ", ARRAY_A );
+}
 ?>
 <div class="wrap" style="background:#fff; padding:20px 30px; border:1px solid #ccc; font-family:sans-serif;">
     <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid #ea5c0b; padding-bottom:15px; margin-bottom:20px;">
         <h1 style="font-size:24px; color:#333; margin:0;">WhatsApp Campaigns</h1>
         <div>
-            <a href="#" style="text-decoration:none; color:#333; font-weight:bold; margin-right:20px;">Get All Campaign</a>
             <a href="?page=wa-campaign-edit" class="button" style="background:#ea5c0b; color:#fff; border:none; padding:8px 20px; font-weight:bold; border-radius:3px;">Create Campaign</a>
         </div>
     </div>
@@ -23,18 +30,7 @@ $campaigns = [
     <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
         <div>
             <select><option>Actions</option></select>
-            <span style="margin-left:15px; color:#777;">4 records found</span>
-        </div>
-        <div>
-            <button class="button">Filters</button>
-            <select><option>Default View</option></select>
-            <select><option>Columns</option></select>
-            <span style="margin-left:20px;">
-                <select><option>20</option></select> per page
-                <button class="button">&lt;</button>
-                <input type="text" value="1" style="width:40px; text-align:center;"> of 1
-                <button class="button">&gt;</button>
-            </span>
+            <span style="margin-left:15px; color:#777;"><?php echo count($campaigns); ?> records found</span>
         </div>
     </div>
 
@@ -52,20 +48,24 @@ $campaigns = [
             </tr>
         </thead>
         <tbody>
-            <?php foreach($campaigns as $camp): ?>
-            <tr>
-                <td style="text-align:center;"><input type="checkbox"></td>
-                <td style="padding:10px; vertical-align:middle;"><?php echo $camp['id']; ?></td>
-                <td style="padding:10px; vertical-align:middle; color:#0073aa;"><?php echo $camp['name']; ?></td>
-                <td style="padding:10px; vertical-align:middle;"><?php echo $camp['template']; ?></td>
-                <td style="padding:10px; vertical-align:middle;"><?php echo $camp['groups']; ?></td>
-                <td style="padding:10px; vertical-align:middle;"><?php echo $camp['time']; ?></td>
-                <td style="padding:10px; vertical-align:middle;"><?php echo $camp['status']; ?></td>
-                <td style="padding:10px; vertical-align:middle; color:#0073aa;">
-                    Select ▼
-                </td>
-            </tr>
-            <?php endforeach; ?>
+            <?php if ( empty( $campaigns ) ) : ?>
+                <tr><td colspan="8" style="text-align:center; padding:15px;">No campaigns found.</td></tr>
+            <?php else : ?>
+                <?php foreach($campaigns as $camp): ?>
+                <tr>
+                    <td style="text-align:center;"><input type="checkbox"></td>
+                    <td style="padding:10px; vertical-align:middle;"><?php echo esc_html($camp['campaign_id']); ?></td>
+                    <td style="padding:10px; vertical-align:middle; color:#0073aa;"><?php echo esc_html($camp['campaign_name']); ?></td>
+                    <td style="padding:10px; vertical-align:middle;"><?php echo esc_html($camp['template_name']); ?></td>
+                    <td style="padding:10px; vertical-align:middle;"><?php echo esc_html($camp['target_type']); ?></td>
+                    <td style="padding:10px; vertical-align:middle;"><?php echo esc_html($camp['schedule_time']); ?></td>
+                    <td style="padding:10px; vertical-align:middle;"><?php echo esc_html($camp['status']); ?></td>
+                    <td style="padding:10px; vertical-align:middle; color:#0073aa;">
+                        <a href="?page=wa-campaign-edit&id=<?php echo $camp['campaign_id']; ?>">Edit</a>
+                    </td>
+                </tr>
+                <?php endforeach; ?>
+            <?php endif; ?>
         </tbody>
     </table>
 </div>
