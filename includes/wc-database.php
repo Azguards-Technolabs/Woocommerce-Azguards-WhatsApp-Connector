@@ -1,0 +1,77 @@
+<?php
+
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
+class WA_Database {
+
+    public static function create_tables() {
+        global $wpdb;
+        $charset_collate = $wpdb->get_charset_collate();
+
+        require_once( ABSPATH . 'wp-admin/includes/upgrade.php' );
+
+        // 1. Templates Table
+        $table_templates = $wpdb->prefix . 'azguards_whatsapp_templates';
+        $sql_templates = "CREATE TABLE $table_templates (
+            entity_id bigint(20) NOT NULL AUTO_INCREMENT,
+            template_id varchar(100) NOT NULL,
+            template_name varchar(255) NOT NULL,
+            template_type varchar(50) NOT NULL,
+            body text NOT NULL,
+            header_format varchar(50) DEFAULT NULL,
+            media_handle varchar(255) DEFAULT NULL,
+            status varchar(50) NOT NULL DEFAULT 'PENDING',
+            created_at datetime DEFAULT CURRENT_TIMESTAMP,
+            updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY  (entity_id),
+            UNIQUE KEY template_id (template_id)
+        ) $charset_collate;";
+
+        // 2. Campaigns Table
+        $table_campaigns = $wpdb->prefix . 'azguards_whatsapp_campaigns';
+        $sql_campaigns = "CREATE TABLE $table_campaigns (
+            campaign_id bigint(20) NOT NULL AUTO_INCREMENT,
+            campaign_name varchar(255) NOT NULL,
+            template_entity_id bigint(20) NOT NULL,
+            target_type varchar(255) NOT NULL,
+            schedule_time datetime NOT NULL,
+            status varchar(50) NOT NULL DEFAULT 'SCHEDULED',
+            sent_count int(11) DEFAULT 0,
+            failed_count int(11) DEFAULT 0,
+            media_url varchar(1024) DEFAULT NULL,
+            created_at datetime DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY  (campaign_id)
+        ) $charset_collate;";
+
+        // 3. Campaign Queue Table
+        $table_queue = $wpdb->prefix . 'azguards_whatsapp_campaign_queue';
+        $sql_queue = "CREATE TABLE $table_queue (
+            id bigint(20) NOT NULL AUTO_INCREMENT,
+            campaign_id bigint(20) DEFAULT NULL,
+            recipient_phone varchar(50) NOT NULL,
+            variable_mapping text,
+            status varchar(50) NOT NULL DEFAULT 'PENDING',
+            error_message text,
+            processed_at datetime,
+            created_at datetime DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY  (id)
+        ) $charset_collate;";
+
+        // 4. Abandoned Cart Tracking Table
+        $table_abandoned = $wpdb->prefix . 'azguards_whatsapp_abandoned_cart';
+        $sql_abandoned = "CREATE TABLE $table_abandoned (
+            session_id varchar(100) NOT NULL,
+            customer_email varchar(255),
+            status varchar(50) NOT NULL DEFAULT 'SENT',
+            notified_at datetime DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY  (session_id)
+        ) $charset_collate;";
+
+        dbDelta( $sql_templates );
+        dbDelta( $sql_campaigns );
+        dbDelta( $sql_queue );
+        dbDelta( $sql_abandoned );
+    }
+}
