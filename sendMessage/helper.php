@@ -1,53 +1,65 @@
 <?php
 /**
- * Process the template variables for a given template option key and source object.
+ * Process the template variables for a given template body and source object.
  *
- * @param string $template_option_key The template option key.
- * @param object $source_object The source object to fetch values from.
+ * @param string   $body_template The template string containing placeholders.
+ * @param WC_Order $order         The WooCommerce order object.
  *
- * @return array Processed template variable data.
+ * @return string Processed body with replaced variables.
  */
-function wa_process_template_variables( $template_option_key, $source_object ) {
-    $template_variable_json = get_option( $template_option_key );
-    $template_variables = json_decode( $template_variable_json, true );
-    $template_variable_data = [];
-
-    if ( ! is_array( $template_variables ) ) {
-        return $template_variable_data;
+function wa_process_magento_variables( $body_template, $order ) {
+    if ( ! $order ) {
+        return $body_template;
     }
 
-    foreach ( $template_variables as $variable ) {
-        $index    = $variable['index'];
-        $property = $variable['max_results'];
-        $method   = 'get_' . $property;
+    // Replace basic variables
+    $replacements = [
+        '{{var order.customer_firstname}}' => $order->get_billing_first_name(),
+        '{{var order.increment_id}}'        => $order->get_order_number(),
+        '{{var order.grand_total}}'         => $order->get_total(),
+        '{{var order.status}}'              => $order->get_status(),
+        '{{var order.entity_id}}'           => $order->get_id(),
+        '{{var store.base_url}}'            => get_site_url() . '/',
+    ];
 
-        switch ( $property ) {
-            case 'first_name':
-                $value = method_exists( $source_object, 'get_billing_first_name' )
-                    ? $source_object->get_billing_first_name()
-                    : '';
-                break;
+    // Handle Invoice variables (if applicable)
+    $replacements['{{var invoice.increment_id}}'] = $order->get_order_number(); // Simplified for WP
+    $replacements['{{var invoice.grand_total}}']  = $order->get_total();
 
-            case 'last_name':
-                $value = method_exists( $source_object, 'get_billing_last_name' )
-                    ? $source_object->get_billing_last_name()
-                    : '';
-                break;
+    // Handle Shipment variables
+    $replacements['{{var shipment.tracking_number}}'] = 'N/A'; // Need actual tracking if available
+    $replacements['{{var shipment.carrier_name}}']    = 'Standard';
 
-            default:
-                if ( method_exists( $source_object, $method ) ) {
-                    $value = $source_object->$method();
-                } else {
-                    $data  = is_callable( [ $source_object, 'get_data' ] ) ? $source_object->get_data() : [];
-                    $value = $data[ $property ] ?? '';
-                }
-                break;
+    // Handle Creditmemo variables
+    $replacements['{{var creditmemo.increment_id}}'] = $order->get_order_number();
+    $replacements['{{var creditmemo.grand_total}}']  = $order->get_total();
+
+    // Handle Quote (Abandoned Cart) variables
+    $replacements['{{var quote.customer_firstname}}'] = $order->get_billing_first_name();
+    $replacements['{{var quote.grand_total}}']        = $order->get_total();
+
+    $processed_body = str_replace( array_keys( $replacements ), array_values( $replacements ), $body_template );
+
+    // Handle Items Loop: {{#items}}{{var items.name}} x {{var items.qty_ordered}} = {{var items.row_total}}{{/items}}
+    if ( preg_match( '/{{#items}}(.*){{\/items}}/s', $processed_body, $matches ) ) {
+        $item_template = $matches[1];
+        $items_string  = '';
+
+        foreach ( $order->get_items() as $item_id => $item ) {
+            $product = $item->get_product();
+            $item_replacements = [
+                '{{var items.name}}'        => $item->get_name(),
+                '{{var items.qty_ordered}}' => $item->get_quantity(),
+                '{{var items.qty}}'         => $item->get_quantity(),
+                '{{var items.row_total}}'   => $item->get_total(),
+            ];
+            $items_string .= str_replace( array_keys( $item_replacements ), array_values( $item_replacements ), $item_template );
         }
 
-        $template_variable_data[ $index ] = $value;
+        $processed_body = preg_replace( '/{{#items}}.*{{\/items}}/s', $items_string, $processed_body );
     }
 
-    return $template_variable_data;
+    return $processed_body;
 }
 
 /**
@@ -68,4 +80,31 @@ function wa_get_dial_code_by_country( $country_code ) {
     ];
 
     return $dial_codes[ strtoupper( $country_code ) ] ?? '';
+}
+
+/**
+ * Get user detail data from the order.
+ *
+ * @param WC_Order $order The WooCommerce order object.
+ *
+ * @return array The array of user details.
+ */
+function wa_get_user_detail_data( $order ) {
+    $billing_first_name = $order->get_billing_first_name();
+    $billing_last_name  = $order->get_billing_last_name();
+    $billing_country    = $order->get_billing_country();
+    $billing_phone      = $order->get_billing_phone();
+    $billing_email      = $order->get_billing_email();
+    $billing_company    = $order->get_billing_company();
+
+    return [
+        'firstName'    => $billing_first_name,
+        'lastName'     => $billing_last_name,
+        'countryCode'  => wa_get_dial_code_by_country( $billing_country ),
+        'mobileNumber' => $billing_phone,
+        'imageURL'     => 'https://randomuser.me/api/portraits/men/45.jpg',
+        'email'        => $billing_email,
+        'businessName' => $billing_company ?: 'Verma Creations',
+        'website'      => get_site_url(),
+    ];
 }

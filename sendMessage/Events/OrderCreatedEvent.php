@@ -12,19 +12,28 @@ class WA_Order_Created_Event implements WA_Event_Interface {
             return;
         }
 
-        // Only fire if the connector is globally enabled.
-        if ( get_option( 'wa_enable_connector' ) !== 'yes' ) {
+        // Only fire if the connector and specific event are enabled.
+        if ( get_option( 'wa_enable_connector' ) !== 'yes' || get_option( 'wa_enable_order_created' ) !== 'yes' ) {
             return;
         }
 
-        $template_id = get_option( 'wa_order_creation_template' );
-        if ( ! $template_id ) {
-            return; // No template mapped for this specific event
+        $template_name = get_option( 'wa_template_order_created_template_name' );
+        if ( ! $template_name ) {
+            return;
         }
 
-        $variables   = wa_process_template_variables( 'wa_order_creation_table_data', $order );
+        $body_template = get_option( 'wa_template_order_created_body_template' );
+        $processed_body = wa_process_magento_variables( $body_template, $order );
+
         $user_detail = wa_get_user_detail_data( $order );
 
-        WA_Message::send_message( $variables, $template_id, 'Order Created', $user_detail );
+        // Map Magento-style variables for the API call (index-based or named depending on API expectation)
+        // Since we processed the body locally, we might send it as a whole or as placeholders.
+        // Assuming the current send_message expects placeholders, we adjust.
+        $variables = [
+            'body' => $processed_body
+        ];
+
+        WA_Message::send_message( $variables, $template_name, 'Order Created', $user_detail );
     }
 }

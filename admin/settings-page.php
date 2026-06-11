@@ -41,12 +41,12 @@ class WC_Settings_WhatsApp_Connector extends WC_Settings_Page {
 
             // Generating custom fields for each hook type
             $hooks = [
-                'order_created'    => 'Order Created Template',
-                'order_invoice'    => 'Order Invoice Template',
-                'order_shipment'   => 'Order Shipment Template',
+                'order_created'      => 'Order Created Template',
+                'order_invoice'      => 'Order Invoice Template',
+                'order_shipment'     => 'Order Shipment Template',
                 'order_cancellation' => 'Order Cancellation Template',
-            'order_creditmemo' => 'Order Credit Memo Template',
-            'abandon_cart'     => 'Abandoned Cart Template'
+                'order_credit_memo'  => 'Order Credit Memo Template',
+                'abandon_cart'       => 'Abandoned Cart Template'
             ];
 
             foreach($hooks as $hook => $label) {
@@ -101,14 +101,14 @@ class WC_Settings_WhatsApp_Connector extends WC_Settings_Page {
             'title'    => __( 'Client Id', 'whatsapp-connector' ),
             'id'       => 'wa_client_id',
             'type'     => 'text',
-            'default'  => 'azguards-magento-integration',
+            'default'  => WA_CONNECTOR_DEFAULTS['general']['wa_client_id'],
         ];
 
         $settings[] = [
             'title'    => __( 'Client secret', 'whatsapp-connector' ),
             'id'       => 'wa_client_secret',
             'type'     => 'password',
-            'default'  => 'pEkdkm4dKjTcK4SOluavwVYz92tXqeva',
+            'default'  => WA_CONNECTOR_DEFAULTS['general']['wa_client_secret'],
         ];
 
         $settings[] = [
@@ -126,12 +126,12 @@ class WC_Settings_WhatsApp_Connector extends WC_Settings_Page {
 
         // Specific Event Toggles (Screenshot 4 logic)
         $toggles = [
-            'wa_enable_order_created' => 'Enable Order Created WhatsApp Send Message',
-            'wa_enable_order_invoice' => 'Enable Order Invoice WhatsApp Send Message',
-            'wa_enable_order_shipment'=> 'Enable Order Shipment WhatsApp Send Message',
+            'wa_enable_order_created'      => 'Enable Order Created WhatsApp Send Message',
+            'wa_enable_order_invoice'      => 'Enable Order Invoice WhatsApp Send Message',
+            'wa_enable_order_shipment'     => 'Enable Order Shipment WhatsApp Send Message',
             'wa_enable_order_cancellation' => 'Enable Order Cancellation WhatsApp Send Message',
-            'wa_enable_order_creditmemo' => 'Enable Order Credit Memo WhatsApp Send Message',
-            'wa_enable_abandoned_cart' => 'Enable Abandoned Cart WhatsApp Send Message',
+            'wa_enable_order_credit_memo'  => 'Enable Order Credit Memo WhatsApp Send Message',
+            'wa_enable_abandoned_cart'     => 'Enable Abandoned Cart WhatsApp Send Message',
         ];
 
         foreach($toggles as $id => $label) {
@@ -231,13 +231,18 @@ class WC_Settings_WhatsApp_Connector extends WC_Settings_Page {
         $settings = $this->get_settings();
         WC_Admin_Settings::save_fields( $settings );
 
+        // Reschedule crons if cron settings changed
+        if ( ! $current_section ) {
+            whatsapp_connector_schedule_crons();
+        }
+
         if ( $current_section === 'templates' ) {
             $hooks = [
                 'order_created',
                 'order_invoice',
                 'order_shipment',
                 'order_cancellation',
-                'order_creditmemo',
+                'order_credit_memo',
                 'abandon_cart'
             ];
 

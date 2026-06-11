@@ -45,18 +45,10 @@ class WA_Message {
 
         $api_url = get_option( 'wa_message_api_url' );
 
-        $converted_placeholder_values = array();
-        foreach ( $template_variables as $key => $value ) {
-            $converted_placeholder_values[] = array(
-                'parameterName'  => $key,
-                'parameterValue' => $value,
-            );
-        }
-
         $body = array(
             'templateId'        => $template_id,
             'userDetail'        => $user_detail,
-            'placeholderValues' => $converted_placeholder_values,
+            'messageBody'       => $template_variables['body'] ?? '', // Support for processed body
         );
 
         $response = wp_remote_post(

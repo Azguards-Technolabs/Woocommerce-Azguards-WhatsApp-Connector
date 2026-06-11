@@ -53,7 +53,7 @@ function whatsapp_connector_plugin_default_values() {
 
     // Legacy/Internal URLs (keeping them just in case, but updating to match defaults where applicable)
     add_option( 'wa_contact_api_url', 'https://wp-conn.aztechstaging.in/v1/contact' );
-    add_option( 'wa_message_api_url', 'https://wp-conn.aztechstaging.in/v1/message/sendTemplate' );
+    add_option( 'wa_message_api_url', $defaults['general']['wa_template_api_url'] . 'v1/message/sendTemplate' );
 }
 add_action( 'whatsapp_connector_plugin_default_options', 'whatsapp_connector_plugin_default_values' );
 
@@ -63,10 +63,107 @@ require_once plugin_dir_path( __FILE__ ) . 'includes/wc-database.php';
  * Plugin activation hook.
  */
 function whatsapp_connector_plugin_activation() {
-    do_action( 'whatsapp_connector_plugin_default_options' );
+    whatsapp_connector_plugin_default_values();
     WA_Database::create_tables();
+    whatsapp_connector_schedule_crons();
 }
 register_activation_hook( __FILE__, 'whatsapp_connector_plugin_activation' );
+
+/**
+ * Schedule crons on activation or when settings change.
+ */
+function whatsapp_connector_schedule_crons() {
+    $campaign_interval = get_option( 'wa_campaign_sync_schedule', 1 );
+    $contact_interval  = get_option( 'wa_contact_sync_schedule', 1 );
+    $template_interval = get_option( 'wa_template_sync_schedule', 60 );
+
+    if ( ! wp_next_scheduled( 'wa_campaign_sync_event' ) ) {
+        wp_schedule_event( time(), 'wa_custom_campaign', 'wa_campaign_sync_event' );
+    }
+    if ( ! wp_next_scheduled( 'wa_contact_sync_event' ) ) {
+        wp_schedule_event( time(), 'wa_custom_contact', 'wa_contact_sync_event' );
+    }
+    if ( ! wp_next_scheduled( 'wa_template_sync_event' ) ) {
+        wp_schedule_event( time(), 'wa_custom_template', 'wa_template_sync_event' );
+    }
+    if ( ! wp_next_scheduled( 'wa_abandoned_cart_check_event' ) ) {
+        wp_schedule_event( time(), 'hourly', 'wa_abandoned_cart_check_event' );
+    }
+}
+
+/**
+ * Add custom cron intervals.
+ */
+add_filter( 'cron_schedules', function ( $schedules ) {
+    $campaign_min = get_option( 'wa_campaign_sync_schedule', 1 );
+    $contact_min  = get_option( 'wa_contact_sync_schedule', 1 );
+    $template_min = get_option( 'wa_template_sync_schedule', 60 );
+
+    $schedules['wa_custom_campaign'] = [
+        'interval' => $campaign_min * 60,
+        'display'  => sprintf( __( 'Every %d Minutes', 'whatsapp-connector' ), $campaign_min ),
+    ];
+    $schedules['wa_custom_contact'] = [
+        'interval' => $contact_min * 60,
+        'display'  => sprintf( __( 'Every %d Minutes', 'whatsapp-connector' ), $contact_min ),
+    ];
+    $schedules['wa_custom_template'] = [
+        'interval' => $template_min * 60,
+        'display'  => sprintf( __( 'Every %d Minutes', 'whatsapp-connector' ), $template_min ),
+    ];
+    return $schedules;
+} );
+
+/**
+ * Hook cron events to their respective functions.
+ */
+add_action( 'wa_campaign_sync_event', 'wa_sync_campaigns' );
+add_action( 'wa_contact_sync_event', 'wa_sync_contacts' );
+add_action( 'wa_template_sync_event', 'wa_sync_templates' );
+add_action( 'wa_abandoned_cart_check_event', 'wa_check_abandoned_carts' );
+
+function wa_sync_campaigns() {
+    // Logic to sync campaigns from API
+    error_log( 'WhatsApp Connector: Syncing Campaigns...' );
+}
+
+function wa_sync_contacts() {
+    // Logic to push new customers to WhatTalk
+    error_log( 'WhatsApp Connector: Syncing Contacts...' );
+}
+
+function wa_sync_templates() {
+    // Logic to pull templates from API
+    error_log( 'WhatsApp Connector: Syncing Templates...' );
+}
+
+function wa_check_abandoned_carts() {
+    if ( get_option( 'wa_enable_connector' ) !== 'yes' || get_option( 'wa_enable_abandoned_cart' ) !== 'yes' ) {
+        return;
+    }
+
+    $abandon_after = get_option( 'wa_abandon_after_minutes', 60 );
+    $max_per_run   = get_option( 'wa_max_per_run', 50 );
+
+    $args = [
+        'status'         => 'pending',
+        'limit'          => $max_per_run,
+        'date_modified'  => '<' . ( time() - ( $abandon_after * 60 ) ),
+        'orderby'        => 'date',
+        'order'          => 'DESC',
+    ];
+
+    $orders = wc_get_orders( $args );
+
+    foreach ( $orders as $order ) {
+        // Check if already notified
+        $already_sent = get_post_meta( $order->get_id(), '_wa_abandoned_notified', true );
+        if ( ! $already_sent ) {
+            wa_trigger_abandoned_cart_whatsapp( $order->get_id() );
+            update_post_meta( $order->get_id(), '_wa_abandoned_notified', 'yes' );
+        }
+    }
+}
 
 /**
  * Enqueue admin styles and scripts.

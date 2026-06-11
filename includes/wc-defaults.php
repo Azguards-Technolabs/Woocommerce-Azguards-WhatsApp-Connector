@@ -9,14 +9,14 @@ define( 'WA_CONNECTOR_DEFAULTS', [
         'wa_enable_connector' => 'no',
         'wa_template_api_url' => 'https://whatatalk-api.azguardstech.com/',
         'wa_auth_api_url'     => 'https://whatatalk-auth.azguardstech.com//realms/azguards-whatsapp/protocol/openid-connect/token',
-        'wa_client_id'        => 'azguards-magento-integration',
-        'wa_client_secret'    => 'pEkdkm4dKjTcK4SOluavwVYz92tXqeva',
+        'wa_client_id'        => '',
+        'wa_client_secret'    => '',
         'wa_grant_type'       => 'client_credentials',
         'wa_enable_order_created'      => 'yes',
         'wa_enable_order_invoice'      => 'yes',
         'wa_enable_order_shipment'     => 'yes',
         'wa_enable_order_cancellation' => 'yes',
-        'wa_enable_order_creditmemo'   => 'yes',
+        'wa_enable_order_credit_memo'  => 'yes',
         'wa_enable_abandoned_cart'     => 'yes',
     ],
     'cron' => [
@@ -69,7 +69,7 @@ define( 'WA_CONNECTOR_DEFAULTS', [
             'footer_template' => 'Contact support for any questions.',
             'buttons_json'    => '[{"type":"URL","text":"View Order","button_url":"{{var store.base_url}}sales/order/view/order_id/{{var order.entity_id}}/"}]',
         ],
-        'order_creditmemo' => [
+        'order_credit_memo' => [
             'event_code'    => 'order_credit_memo',
             'template_name' => 'order_refunded',
             'category'      => 'Utility',
