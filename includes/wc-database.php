@@ -19,6 +19,8 @@ class WA_Database {
             template_id varchar(100) NOT NULL,
             template_name varchar(255) NOT NULL,
             template_type varchar(50) NOT NULL,
+            category varchar(100) DEFAULT NULL,
+            language varchar(50) DEFAULT NULL,
             body text NOT NULL,
             header_format varchar(50) DEFAULT NULL,
             media_handle varchar(255) DEFAULT NULL,

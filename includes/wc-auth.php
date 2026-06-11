@@ -62,6 +62,18 @@ class WA_Auth {
 
         set_transient( 'wa_access_token', $token, $expires_in );
 
+        // Extract tenant and user IDs from JWT token
+        $token_parts = explode( '.', $token );
+        if ( count( $token_parts ) === 3 ) {
+            $payload = json_decode( base64_decode( str_replace( array( '-', '_' ), array( '+', '/' ), $token_parts[1] ) ), true );
+            if ( ! empty( $payload['active_tenant']['tenant_id'] ) ) {
+                update_option( 'wa_business_id', $payload['active_tenant']['tenant_id'] );
+            }
+            if ( ! empty( $payload['sub'] ) ) {
+                update_option( 'wa_user_id', $payload['sub'] );
+            }
+        }
+
         return $data;
     }
 }
