@@ -10,6 +10,7 @@ defined( 'ABSPATH' ) || exit;
 
 define( 'WC_WHATSAPP_CONNECTOR_PATH', plugin_dir_path( __FILE__ ) );
 
+require_once plugin_dir_path( __FILE__ ) . 'includes/wc-defaults.php';
 require_once plugin_dir_path( __FILE__ ) . 'includes/wc-auth.php';
 require_once plugin_dir_path( __FILE__ ) . 'includes/wc-templates.php';
 require_once plugin_dir_path( __FILE__ ) . 'includes/wc-contact.php';
@@ -26,10 +27,33 @@ require_once plugin_dir_path( __FILE__ ) . 'admin/authentication/validate-creden
  * Set plugin default values on activation.
  */
 function whatsapp_connector_plugin_default_values() {
-    add_option( 'wa_template_api_url', 'https://wp-conn.aztechstaging.in/v1/template/templates' );
+    $defaults = WA_CONNECTOR_DEFAULTS;
+
+    // General Settings
+    foreach ( $defaults['general'] as $key => $value ) {
+        add_option( $key, $value );
+    }
+
+    // Cron Settings
+    foreach ( $defaults['cron'] as $key => $value ) {
+        add_option( $key, $value );
+    }
+
+    // Template Settings
+    foreach ( $defaults['templates'] as $hook => $data ) {
+        foreach ( $data as $field => $val ) {
+            add_option( "wa_template_{$hook}_{$field}", $val );
+        }
+    }
+
+    // Widget Settings
+    foreach ( $defaults['widget'] as $key => $value ) {
+        add_option( $key, $value );
+    }
+
+    // Legacy/Internal URLs (keeping them just in case, but updating to match defaults where applicable)
     add_option( 'wa_contact_api_url', 'https://wp-conn.aztechstaging.in/v1/contact' );
     add_option( 'wa_message_api_url', 'https://wp-conn.aztechstaging.in/v1/message/sendTemplate' );
-    add_option( 'wa_auth_api_url', 'https://auth.aztechstaging.in/realms/azguards-whatsapp/protocol/openid-connect/token' );
 }
 add_action( 'whatsapp_connector_plugin_default_options', 'whatsapp_connector_plugin_default_values' );
 
@@ -131,9 +155,10 @@ function wa_load_plugin() {
         return; // WooCommerce not active.
     }
 
-    require_once plugin_dir_path( __FILE__ ) . 'includes/wc-settings-whatsapp-connector.php';
+    // require_once plugin_dir_path( __FILE__ ) . 'includes/wc-settings-whatsapp-connector.php';
 
     add_filter( 'woocommerce_get_settings_pages', function ( $settings ) {
+        require_once WC_WHATSAPP_CONNECTOR_PATH . 'admin/settings-page.php';
         $settings[] = new WC_Settings_WhatsApp_Connector();
         return $settings;
     } );
