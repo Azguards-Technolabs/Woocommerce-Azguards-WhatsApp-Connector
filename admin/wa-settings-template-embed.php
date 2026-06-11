@@ -8,6 +8,20 @@ $unique_suffix = '_' . $hook_type; // Create unique suffix for HTML scoping
 
 wp_enqueue_style( 'wa-template-builder-css', plugins_url( '../assets/template-builder.css', __FILE__ ) );
 wp_enqueue_script( 'wa-template-builder-js', plugins_url( '../assets/template-builder.js', __FILE__ ), array( 'jquery' ), null, true );
+
+// Load saved values or defaults
+$defaults = WA_CONNECTOR_DEFAULTS['templates'][$hook_type] ?? [];
+
+$template_name   = get_option("wa_template_{$hook_type}_template_name", $defaults['template_name'] ?? '');
+$category        = get_option("wa_template_{$hook_type}_category", $defaults['category'] ?? 'Utility');
+$language        = get_option("wa_template_{$hook_type}_language", $defaults['language'] ?? 'en_US');
+$header_type     = get_option("wa_template_{$hook_type}_header_type", $defaults['header_type'] ?? 'text');
+$header_text     = get_option("wa_template_{$hook_type}_header_text", $defaults['header_text'] ?? '');
+$body_template   = get_option("wa_template_{$hook_type}_body_template", $defaults['body_template'] ?? '');
+$footer_template = get_option("wa_template_{$hook_type}_footer_template", $defaults['footer_template'] ?? '');
+$buttons_json    = get_option("wa_template_{$hook_type}_buttons_json", $defaults['buttons_json'] ?? '[]');
+
+$buttons = json_decode($buttons_json, true) ?: [];
 ?>
 
 <div class="wa-template-wrap" style="padding:0; margin:0;" data-hook="<?php echo esc_attr($hook_type); ?>">
@@ -22,13 +36,35 @@ wp_enqueue_script( 'wa-template-builder-js', plugins_url( '../assets/template-bu
             </div>
 
             <div class="wa-form-row" style="margin-bottom:15px;">
+                <label style="display:block; margin-bottom:5px;">Template Name</label>
+                <input type="text" name="wa_template_<?php echo esc_attr($hook_type); ?>_template_name" value="<?php echo esc_attr($template_name); ?>" style="width:100%;">
+            </div>
+
+            <div style="display:flex; gap:15px; margin-bottom:15px;">
+                <div class="wa-form-row" style="flex:1;">
+                    <label style="display:block; margin-bottom:5px;">Category</label>
+                    <select name="wa_template_<?php echo esc_attr($hook_type); ?>_category" style="width:100%;">
+                        <option value="Utility" <?php selected($category, 'Utility'); ?>>Utility</option>
+                        <option value="Marketing" <?php selected($category, 'Marketing'); ?>>Marketing</option>
+                        <option value="Authentication" <?php selected($category, 'Authentication'); ?>>Authentication</option>
+                    </select>
+                </div>
+                <div class="wa-form-row" style="flex:1;">
+                    <label style="display:block; margin-bottom:5px;">Language</label>
+                    <input type="text" name="wa_template_<?php echo esc_attr($hook_type); ?>_language" value="<?php echo esc_attr($language); ?>" style="width:100%;">
+                </div>
+            </div>
+
+            <div class="wa-form-row" style="margin-bottom:15px;">
                 <label style="display:block; margin-bottom:5px;">Header Type</label>
-                <select class="regular-text"><option>Text</option></select>
+                <select name="wa_template_<?php echo esc_attr($hook_type); ?>_header_type" class="regular-text" style="width:100%;">
+                    <option value="text" <?php selected($header_type, 'text'); ?>>Text</option>
+                </select>
             </div>
 
             <div class="wa-form-row" style="margin-bottom:15px;">
                 <label style="display:block; margin-bottom:5px;">Header Text</label>
-                <textarea class="wa-bind-header" rows="2" style="width:100%;">Your Order is Shipped!</textarea>
+                <textarea name="wa_template_<?php echo esc_attr($hook_type); ?>_header_text" class="wa-bind-header" rows="2" style="width:100%;"><?php echo esc_textarea($header_text); ?></textarea>
             </div>
 
             <div class="wa-form-row" style="margin-bottom:15px;">
@@ -36,28 +72,44 @@ wp_enqueue_script( 'wa-template-builder-js', plugins_url( '../assets/template-bu
                     <label style="display:block; margin-bottom:5px;">Message Body</label>
                     <button type="button" class="button button-small">{{ Insert Variable }}</button>
                 </div>
-                <!-- Dynamic body text based on hook -->
-                <textarea class="wa-bind-body" rows="6" style="width:100%;">Hi {{order.customer_firstname}}, your order #{{order.increment_id}} is on its way!</textarea>
+                <textarea name="wa_template_<?php echo esc_attr($hook_type); ?>_body_template" class="wa-bind-body" rows="6" style="width:100%;"><?php echo esc_textarea($body_template); ?></textarea>
                 <span class="description" style="font-size:11px; display:block; margin-top:5px;">Place cursor in text area and click a variable from the popup above to insert it.</span>
             </div>
 
             <div class="wa-form-row" style="margin-bottom:15px;">
                 <label style="display:block; margin-bottom:5px;">Footer</label>
-                <textarea class="wa-bind-footer" rows="2" style="width:100%;">Track your package for updates.</textarea>
+                <textarea name="wa_template_<?php echo esc_attr($hook_type); ?>_footer_template" class="wa-bind-footer" rows="2" style="width:100%;"><?php echo esc_textarea($footer_template); ?></textarea>
             </div>
 
             <div class="wa-form-row" style="margin-bottom:20px;">
                 <label style="display:block; margin-bottom:5px;">Enable Buttons</label>
                 <select><option>Yes</option></select>
-                <div style="margin-top:10px; display:flex; gap:10px;">
-                    <select><option>URL Button</option></select>
-                    <input type="text" value="View Order" style="width:120px;">
-                    <input type="text" value="https://store.local/sales/order/view" style="flex:1;">
-                    <button class="button">Remove</button>
+                <div id="wa-buttons-container-<?php echo esc_attr($hook_type); ?>" style="margin-top:10px;">
+                    <?php if (!empty($buttons)): ?>
+                        <?php foreach ($buttons as $button): ?>
+                            <div class="wa-button-row" style="margin-bottom:10px; display:flex; gap:10px;">
+                                <select style="width:120px;"><option><?php echo esc_html($button['type']); ?></option></select>
+                                <input type="text" value="<?php echo esc_attr($button['text']); ?>" style="width:120px;">
+                                <input type="text" value="<?php echo esc_attr($button['button_url'] ?? ''); ?>" style="flex:1;">
+                                <button type="button" class="button">Remove</button>
+                            </div>
+                        <?php endforeach; ?>
+                    <?php else: ?>
+                        <div style="margin-top:10px; display:flex; gap:10px;">
+                            <select><option>URL Button</option></select>
+                            <input type="text" placeholder="Button Text" style="width:120px;">
+                            <input type="text" placeholder="URL" style="flex:1;">
+                            <button type="button" class="button">Remove</button>
+                        </div>
+                    <?php endif; ?>
                 </div>
+                <!-- Hidden input to store JSON for saving -->
+                <input type="hidden" name="wa_template_<?php echo esc_attr($hook_type); ?>_buttons_json" value="<?php echo esc_attr($buttons_json); ?>">
             </div>
 
-            <button class="button button-primary" style="background:#ea5c0b; border:none;">Save Template</button>
+            <p class="submit" style="padding:0; margin-top:20px;">
+                <input type="submit" name="save" class="button button-primary" value="Save Template Settings" style="background:#ea5c0b; border:none;">
+            </p>
         </div>
 
         <!-- Right Side: iPhone Live Preview -->
@@ -68,13 +120,15 @@ wp_enqueue_script( 'wa-template-builder-js', plugins_url( '../assets/template-bu
                         WhatsApp Preview
                     </div>
                     <div style="background:#fff; margin-top:10px; padding:10px; border-radius:5px 5px 5px 0; box-shadow:0 1px 1px rgba(0,0,0,0.1);">
-                        <strong class="wa-preview-header" style="display:block; margin-bottom:5px; font-size:14px;">Your Order is Shipped!</strong>
-                        <p class="wa-preview-body" style="font-size:13px; margin:0 0 5px 0; line-height:1.4;">Hi Zubair, your order #10001 is on its way!</p>
-                        <span class="wa-preview-footer" style="font-size:11px; color:#999; display:block; margin-bottom:10px;">Track your package for updates.</span>
-                        <div style="border-top:1px solid #eee; text-align:center; padding-top:8px;">
-                            <a href="#" style="color:#00a884; font-size:13px; text-decoration:none; display:flex; align-items:center; justify-content:center;">
-                                <span style="margin-right:5px;">🔗</span> View Order
-                            </a>
+                        <strong class="wa-preview-header" style="display:block; margin-bottom:5px; font-size:14px;"><?php echo esc_html($header_text); ?></strong>
+                        <p class="wa-preview-body" style="font-size:13px; margin:0 0 5px 0; line-height:1.4; white-space: pre-wrap;"><?php echo esc_html($body_template); ?></p>
+                        <span class="wa-preview-footer" style="font-size:11px; color:#999; display:block; margin-bottom:10px;"><?php echo esc_html($footer_template); ?></span>
+                        <div class="wa-preview-buttons" style="border-top:1px solid #eee; text-align:center; padding-top:8px;">
+                            <?php foreach ($buttons as $button): ?>
+                                <a href="#" style="color:#00a884; font-size:13px; text-decoration:none; display:flex; align-items:center; justify-content:center; margin-bottom:5px;">
+                                    <span style="margin-right:5px;">🔗</span> <?php echo esc_html($button['text']); ?>
+                                </a>
+                            <?php endforeach; ?>
                         </div>
                     </div>
                 </div>

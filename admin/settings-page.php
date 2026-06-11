@@ -45,7 +45,8 @@ class WC_Settings_WhatsApp_Connector extends WC_Settings_Page {
                 'order_invoice'    => 'Order Invoice Template',
                 'order_shipment'   => 'Order Shipment Template',
                 'order_cancellation' => 'Order Cancellation Template',
-                'order_creditmemo' => 'Order Credit Memo Template'
+            'order_creditmemo' => 'Order Credit Memo Template',
+            'abandon_cart'     => 'Abandoned Cart Template'
             ];
 
             foreach($hooks as $hook => $label) {
@@ -77,7 +78,7 @@ class WC_Settings_WhatsApp_Connector extends WC_Settings_Page {
             'title'   => __( 'WhatsAppConector Enable', 'whatsapp-connector' ),
             'id'      => 'wa_enable_connector',
             'type'    => 'select',
-            'default' => 'yes',
+            'default' => WA_CONNECTOR_DEFAULTS['general']['wa_enable_connector'],
             'options' => [ 'yes' => 'Yes', 'no'  => 'No' ],
         ];
 
@@ -86,14 +87,14 @@ class WC_Settings_WhatsApp_Connector extends WC_Settings_Page {
             'id'       => 'wa_template_api_url', /* using template as base for now */
             'type'     => 'wa_readonly',
             'desc'     => __( 'This value is read-only. Contact developer to change the API server.', 'whatsapp-connector' ),
-            'default'  => 'https://whatatalk-api.azguardtech.com/',
+            'default'  => WA_CONNECTOR_DEFAULTS['general']['wa_template_api_url'],
         ];
 
         $settings[] = [
             'title'    => __( 'Authentication API URL', 'whatsapp-connector' ),
             'id'       => 'wa_auth_api_url',
             'type'     => 'wa_readonly',
-            'default'  => 'https://whatatalk-auth.azguardtech.com/realms/azguards-whatsapp/protocol/openid-connect/token',
+            'default'  => WA_CONNECTOR_DEFAULTS['general']['wa_auth_api_url'],
         ];
 
         $settings[] = [
@@ -138,7 +139,7 @@ class WC_Settings_WhatsApp_Connector extends WC_Settings_Page {
                 'title'   => __( $label, 'whatsapp-connector' ),
                 'id'      => $id,
                 'type'    => 'select',
-                'default' => 'yes',
+                'default' => WA_CONNECTOR_DEFAULTS['general'][$id],
                 'options' => [ 'yes' => 'Yes', 'no'  => 'No' ],
             ];
         }
@@ -146,6 +147,46 @@ class WC_Settings_WhatsApp_Connector extends WC_Settings_Page {
         $settings[] = [
             'type' => 'sectionend',
             'id'   => 'wa_general_config',
+        ];
+
+        // Cron Configuration
+        $settings[] = [
+            'title' => __( 'Cron Configuration', 'whatsapp-connector' ),
+            'desc'  => __( 'Set how often each background sync job should run (in minutes). The system automatically converts this into a valid cron schedule.', 'whatsapp-connector' ),
+            'type'  => 'title',
+            'id'    => 'wa_cron_config',
+        ];
+
+        $settings[] = [
+            'title'    => __( 'Campaign Sync (minutes)', 'whatsapp-connector' ),
+            'id'       => 'wa_campaign_sync_schedule',
+            'type'     => 'text',
+            'default'  => WA_CONNECTOR_DEFAULTS['cron']['wa_campaign_sync_schedule'],
+            'desc'     => __( 'How often Magento polls WhatTalk for updated campaign statuses. Enter a number (e.g. 1 = every minute, 5 = every 5 minutes). Default: 1', 'whatsapp-connector' ),
+            'desc_tip' => true,
+        ];
+
+        $settings[] = [
+            'title'    => __( 'Contact Sync (minutes)', 'whatsapp-connector' ),
+            'id'       => 'wa_contact_sync_schedule',
+            'type'     => 'text',
+            'default'  => WA_CONNECTOR_DEFAULTS['cron']['wa_contact_sync_schedule'],
+            'desc'     => __( 'How often unsynced customers are pushed to the WhatTalk contact store. Enter a number (e.g. 60 = every 60 minutes). Default: 1', 'whatsapp-connector' ),
+            'desc_tip' => true,
+        ];
+
+        $settings[] = [
+            'title'    => __( 'Template Sync (minutes)', 'whatsapp-connector' ),
+            'id'       => 'wa_template_sync_schedule',
+            'type'     => 'text',
+            'default'  => WA_CONNECTOR_DEFAULTS['cron']['wa_template_sync_schedule'],
+            'desc'     => __( 'How often approved WhatsApp templates are pulled from WhatTalk into Magento. Enter a number (e.g. 60 = every 60 minutes). Recommended: 60. Default: 1', 'whatsapp-connector' ),
+            'desc_tip' => true,
+        ];
+
+        $settings[] = [
+            'type' => 'sectionend',
+            'id'   => 'wa_cron_config',
         ];
 
         return $settings;
@@ -186,7 +227,40 @@ class WC_Settings_WhatsApp_Connector extends WC_Settings_Page {
     }
 
     public function save() {
-        WC_Admin_Settings::save_fields( $this->get_settings() );
+        global $current_section;
+        $settings = $this->get_settings();
+        WC_Admin_Settings::save_fields( $settings );
+
+        if ( $current_section === 'templates' ) {
+            $hooks = [
+                'order_created',
+                'order_invoice',
+                'order_shipment',
+                'order_cancellation',
+                'order_creditmemo',
+                'abandon_cart'
+            ];
+
+            foreach ( $hooks as $hook ) {
+                $fields = [
+                    'template_name',
+                    'category',
+                    'language',
+                    'header_type',
+                    'header_text',
+                    'body_template',
+                    'footer_template',
+                    'buttons_json'
+                ];
+
+                foreach ( $fields as $field ) {
+                    $option_key = "wa_template_{$hook}_{$field}";
+                    if ( isset( $_POST[ $option_key ] ) ) {
+                        update_option( $option_key, wp_unslash( $_POST[ $option_key ] ) );
+                    }
+                }
+            }
+        }
     }
 }
 
