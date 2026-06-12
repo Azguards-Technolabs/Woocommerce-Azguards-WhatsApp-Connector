@@ -6,6 +6,12 @@ if ( ! defined( 'ABSPATH' ) ) {
 // Fetch templates from database
 global $wpdb;
 $table_name = $wpdb->prefix . 'azguards_whatsapp_templates';
+
+// Ensure table exists
+if ( $wpdb->get_var( "SHOW TABLES LIKE '$table_name'" ) !== $table_name ) {
+    WA_Database::create_tables();
+}
+
 $templates = $wpdb->get_results( "SELECT * FROM $table_name ORDER BY created_at DESC", ARRAY_A );
 $record_count = count( $templates );
 ?>
