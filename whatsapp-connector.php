@@ -61,6 +61,16 @@ add_action( 'whatsapp_connector_plugin_default_options', 'whatsapp_connector_plu
 
 require_once plugin_dir_path( __FILE__ ) . 'includes/wc-database.php';
 
+add_action(
+    'plugins_loaded',
+    function () {
+        if ( class_exists( 'WA_Database' ) ) {
+            WA_Database::maybe_upgrade();
+        }
+    },
+    20
+);
+
 /**
  * Plugin activation hook.
  */

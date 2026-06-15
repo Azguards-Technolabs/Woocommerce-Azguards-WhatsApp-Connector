@@ -77,6 +77,81 @@ class WA_Templates {
     }
 }
 
+if ( ! function_exists( 'wa_get_template_list_page_url' ) ) :
+    /**
+     * Build a paginated template list API URL.
+     *
+     * @param string $api_base_url API base URL without trailing slash.
+     * @param int    $page_number  Zero-based page index.
+     * @param int    $page_size    Items per page.
+     * @return string
+     */
+    function wa_get_template_list_page_url( $api_base_url, $page_number = 0, $page_size = 100 ) {
+        return add_query_arg(
+            array(
+                'page' => max( 0, (int) $page_number ),
+                'size' => max( 1, (int) $page_size ),
+            ),
+            rtrim( $api_base_url, '/' ) . '/meta-service/v1/template'
+        );
+    }
+endif;
+
+if ( ! function_exists( 'wa_get_template_sync_next_url' ) ) :
+    /**
+     * Resolve the next template sync URL from an API response.
+     *
+     * @param string $api_base_url API base URL without trailing slash.
+     * @param array  $data         Decoded API response body.
+     * @param string $current_url  URL used for the current request.
+     * @param int    $page_count   Number of pages fetched so far.
+     * @param int    $items_count  Templates returned on the current page.
+     * @return string|null
+     */
+    function wa_get_template_sync_next_url( $api_base_url, $data, $current_url, $page_count, $items_count ) {
+        $result = $data['result'] ?? $data['Result'] ?? array();
+        $paging = $result['paging'] ?? $result['pagination'] ?? array();
+
+        if ( ! empty( $paging['next'] ) && is_string( $paging['next'] ) ) {
+            return $paging['next'];
+        }
+
+        $after = $paging['cursors']['after'] ?? $paging['after'] ?? null;
+        if ( $after ) {
+            return add_query_arg( 'after', $after, remove_query_arg( array( 'after' ), $current_url ) );
+        }
+
+        $page_size = (int) ( $paging['pageSize'] ?? $paging['size'] ?? $paging['limit'] ?? 0 );
+        if ( $page_size <= 0 ) {
+            $page_size = $items_count > 0 ? $items_count : 10;
+        }
+
+        if ( isset( $paging['pageNumber'] ) ) {
+            $current_page = (int) $paging['pageNumber'];
+        } elseif ( isset( $paging['page'] ) ) {
+            $current_page = max( 0, (int) $paging['page'] - 1 );
+        } else {
+            $current_page = max( 0, $page_count - 1 );
+        }
+
+        $total_pages = (int) ( $paging['totalPages'] ?? 0 );
+        if ( $total_pages > 0 && ( $current_page + 1 ) < $total_pages ) {
+            return wa_get_template_list_page_url( $api_base_url, $current_page + 1, $page_size );
+        }
+
+        $total_elements = (int) ( $paging['totalElements'] ?? $paging['total'] ?? $paging['totalItems'] ?? 0 );
+        if ( $total_elements > 0 && ( ( $current_page + 1 ) * $page_size ) < $total_elements ) {
+            return wa_get_template_list_page_url( $api_base_url, $current_page + 1, $page_size );
+        }
+
+        if ( $items_count >= $page_size ) {
+            return wa_get_template_list_page_url( $api_base_url, $page_count, $page_size );
+        }
+
+        return null;
+    }
+endif;
+
 /**
  * AJAX: Sync templates from API to local database.
  */
@@ -102,11 +177,10 @@ if ( ! function_exists( 'wa_sync_templates_handler' ) ) :
             $token = $data['access_token'] ?? '';
         }
 
-        $api_base_url = get_option( 'wa_template_api_url', 'https://whatatalk-api.azguardstech.com/' );
-        $api_url = rtrim( $api_base_url, '/' ) . '/meta-service/v1/template';
+        $api_base_url = rtrim( get_option( 'wa_template_api_url', 'https://whatatalk-api.azguardstech.com/' ), '/' );
 
         // Log the API URL for debugging. DO NOT log the token.
-        error_log( "WA_API_URL: $api_url" );
+        error_log( 'WA_API_URL: ' . wa_get_template_list_page_url( $api_base_url, 0, 100 ) );
 
         $business_id = get_option( 'wa_business_id' );
         $user_id     = get_option( 'wa_user_id' );
@@ -125,16 +199,15 @@ if ( ! function_exists( 'wa_sync_templates_handler' ) ) :
         global $wpdb;
         $table_name = $wpdb->prefix . 'azguards_whatsapp_templates';
 
-        // Ensure table exists
-        if ( $wpdb->get_var( "SHOW TABLES LIKE '$table_name'" ) !== $table_name ) {
-            WA_Database::create_tables();
-        }
+        // Ensure table exists and schema is current.
+        WA_Database::create_tables();
 
-        $synced_count = 0;
-        $next_url = $api_url;
-        $page_count = 0;
+        $synced_count       = 0;
+        $page_count         = 0;
+        $previous_first_id  = null;
+        $next_url           = wa_get_template_list_page_url( $api_base_url, 0, 100 );
 
-        error_log( "[WA Sync] Starting template sync. Initial URL: $api_url" );
+        error_log( "[WA Sync] Starting template sync. Initial URL: $next_url" );
 
         while ( $next_url ) {
             $page_count++;
@@ -156,18 +229,27 @@ if ( ! function_exists( 'wa_sync_templates_handler' ) ) :
                 error_log( "WA_SYNC_ERROR: " . $response->get_error_message() );
                 break;
             }
-
+            
             $body = wp_remote_retrieve_body( $response );
             $data = json_decode( $body, true );
 
-            if ( empty( $data['result']['data'] ) || ! is_array( $data['result']['data'] ) ) {
+            $templates_page = $data['result']['data'] ?? $data['Result']['data'] ?? null;
+
+            if ( empty( $templates_page ) || ! is_array( $templates_page ) ) {
                 error_log( "[WA Sync] No data found in page $page_count." );
                 break;
             }
 
-            error_log( "[WA Sync] Found " . count( $data['result']['data'] ) . " templates in page $page_count." );
+            $first_id = $templates_page[0]['id'] ?? null;
+            if ( $first_id && $first_id === $previous_first_id ) {
+                error_log( '[WA Sync] Duplicate page detected, stopping pagination.' );
+                break;
+            }
+            $previous_first_id = $first_id;
 
-            foreach ( $data['result']['data'] as $template ) {
+            error_log( '[WA Sync] Found ' . count( $templates_page ) . " templates in page $page_count." );
+
+            foreach ( $templates_page as $template ) {
                 $template_id   = $template['id'];
                 $template_name = $template['name'];
                 $status        = $template['status'];
@@ -202,12 +284,9 @@ if ( ! function_exists( 'wa_sync_templates_handler' ) ) :
                         if ( 'BUTTONS' === $component['componentType'] ) {
                             $buttons = $component['componentData'];
                         }
-                    } elseif ( 'FOOTER' === $comp_type ) {
-                        $footer_text = $component['componentData'] ?? '';
-                    } elseif ( 'BUTTONS' === $comp_type ) {
-                        $buttons = $component['componentData'] ?? [];
-                    } elseif ( 'CAROUSEL' === $comp_type ) {
-                        $carousel_cards = $component['componentData'] ?? [];
+                        if ( 'CAROUSEL' === $component['componentType'] ) {
+                            $carousel_cards = $component['componentData'] ?? [];
+                        }
                     }
                 }
 
@@ -243,12 +322,14 @@ if ( ! function_exists( 'wa_sync_templates_handler' ) ) :
                 $synced_count++;
             }
 
-            // Handle Pagination (Cursor-based)
-            // Assuming the API returns a 'next' link in result.paging.next or similar
-            $next_url = $data['result']['paging']['next'] ?? null;
+            // Handle pagination (cursor, metadata, or full-page fallback).
+            $next_url = wa_get_template_sync_next_url( $api_base_url, $data, $next_url, $page_count, count( $templates_page ) );
 
             if ( $next_url ) {
-                error_log( "[WA Sync] Next page cursor found: $next_url" );
+                error_log( "[WA Sync] Next page URL: $next_url" );
+            } else {
+                $paging = ( $data['result'] ?? $data['Result'] ?? array() )['paging'] ?? array();
+                error_log( '[WA Sync] No more pages. Paging metadata: ' . wp_json_encode( $paging ) );
             }
 
             // Limit loop safety
