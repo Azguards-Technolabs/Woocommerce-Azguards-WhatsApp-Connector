@@ -112,6 +112,7 @@ wp_enqueue_script( 'wa-template-builder-js', plugins_url( '../assets/template-bu
     
     <input type="hidden" id="wa_current_hook" value="<?php echo esc_attr($hook_type); ?>">
     <input type="hidden" id="wa_edit_entity_id" value="<?php echo esc_attr($edit_id); ?>">
+    <input type="hidden" id="wa_save_template_nonce" value="<?php echo wp_create_nonce( 'wa_save_builder_template' ); ?>">
     <script>
         var RAW_CAROUSEL_CARDS = <?php echo empty($saved_carousel_cards_json) ? '[]' : $saved_carousel_cards_json; ?>;
     </script>

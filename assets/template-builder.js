@@ -56,7 +56,14 @@ jQuery(document).ready(function ($) {
     }
 
     $('#wa_header_text, #wa_message_body, #wa_footer_text').on('input', updatePreview);
-    $('#wa_enable_buttons').on('change', updatePreview);
+    $('#wa_enable_buttons').on('change', function() {
+        if ($(this).is(':checked')) {
+            $('#wa_buttons_row').show();
+        } else {
+            $('#wa_buttons_row').hide();
+        }
+        updatePreview();
+    });
 
     $('#wa_template_type').on('change', function () {
         var type = $(this).val();
@@ -109,6 +116,7 @@ jQuery(document).ready(function ($) {
             $('#wa_header_media_row').show();
         }
     });
+
 
     var custom_uploader;
     $('#wa_upload_media_btn').on('click', function (e) {
@@ -368,6 +376,7 @@ jQuery(document).ready(function ($) {
 
         var templateData = {
             action: 'wa_save_builder_template',
+            security: $('#wa_save_template_nonce').val(),
             is_standalone: 'yes',
             entity_id: $('#wa_edit_entity_id').val() || 0,
             hook: $('#wa_current_hook').val() || 'marketing',
@@ -436,6 +445,15 @@ jQuery(document).ready(function ($) {
             $btn.text('Save Template').prop('disabled', false);
         });
     });
+
+    // Ensure correct initial state for buttons
+    if ($('#wa_enable_buttons').length) {
+        if ($('#wa_enable_buttons').is(':checked')) {
+            $('#wa_buttons_row').show();
+        } else {
+            $('#wa_buttons_row').hide();
+        }
+    }
 
     // Initial render
     updatePreview();

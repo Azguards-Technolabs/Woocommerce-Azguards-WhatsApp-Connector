@@ -57,7 +57,7 @@ class WA_Database {
             sent_count int(11) DEFAULT 0,
             failed_count int(11) DEFAULT 0,
             media_url varchar(1024) DEFAULT NULL,
-            created_at datetime DEFAULT CURRENT_TIMESTAMP,
+            created_at datetime DEFAULT CURRENT_TIMESTAMP NOT NULL,
             PRIMARY KEY  (campaign_id)
         ) $charset_collate;";
 
@@ -70,8 +70,8 @@ class WA_Database {
             variable_mapping text,
             status varchar(50) NOT NULL DEFAULT 'PENDING',
             error_message text,
-            processed_at datetime,
-            created_at datetime DEFAULT CURRENT_TIMESTAMP,
+            processed_at datetime DEFAULT '0000-00-00 00:00:00' NOT NULL,
+            created_at datetime DEFAULT CURRENT_TIMESTAMP NOT NULL,
             PRIMARY KEY  (id)
         ) $charset_collate;";
 
@@ -81,7 +81,7 @@ class WA_Database {
             session_id varchar(100) NOT NULL,
             customer_email varchar(255),
             status varchar(50) NOT NULL DEFAULT 'SENT',
-            notified_at datetime DEFAULT CURRENT_TIMESTAMP,
+            notified_at datetime DEFAULT CURRENT_TIMESTAMP NOT NULL,
             PRIMARY KEY  (session_id)
         ) $charset_collate;";
 

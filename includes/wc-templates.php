@@ -202,6 +202,12 @@ if ( ! function_exists( 'wa_sync_templates_handler' ) ) :
                         if ( 'BUTTONS' === $component['componentType'] ) {
                             $buttons = $component['componentData'];
                         }
+                    } elseif ( 'FOOTER' === $comp_type ) {
+                        $footer_text = $component['componentData'] ?? '';
+                    } elseif ( 'BUTTONS' === $comp_type ) {
+                        $buttons = $component['componentData'] ?? [];
+                    } elseif ( 'CAROUSEL' === $comp_type ) {
+                        $carousel_cards = $component['componentData'] ?? [];
                     }
                 }
 
@@ -269,6 +275,13 @@ if ( ! function_exists( 'wa_save_builder_template_handler' ) ) :
         if ( ! current_user_can( 'manage_woocommerce' ) ) {
             wp_send_json_error( __( 'Unauthorized', 'whatsapp-connector' ) );
         }
+
+        // Ensure database table is up-to-date
+        if ( class_exists( 'WA_Database' ) ) {
+            WA_Database::create_tables();
+        }
+
+        check_ajax_referer( 'wa_save_builder_template', 'security' );
 
         $hook            = sanitize_text_field( $_POST['hook'] ?? '' );
         $is_standalone   = isset($_POST['is_standalone']) && $_POST['is_standalone'] === 'yes';
@@ -401,6 +414,15 @@ if ( ! function_exists( 'wa_save_builder_template_handler' ) ) :
         // Extract API template ID (the platform returns it under result.id or result.templateId)
         $api_template_id = $data['result']['id'] ?? $data['result']['templateId'] ?? $data['id'] ?? null;
 
+        // Handle 409 Conflict (Template already exists)
+        if ( $response_code === 409 ) {
+            // Attempt to find the existing template ID if not provided in the response
+            if ( ! $api_template_id ) {
+                // Look into component data or other fields if available in $data on conflict
+                $api_template_id = $data['error']['id'] ?? $data['error']['templateId'] ?? null;
+            }
+        }
+
         if ( $api_template_id && ! $is_standalone ) {
             update_option( "wa_template_{$hook}_assigned_id", $api_template_id );
 
@@ -442,7 +464,10 @@ if ( ! function_exists( 'wa_save_builder_template_handler' ) ) :
             update_option( "wa_template_{$hook}_assigned_id", $template_id );
         }
 
-        $status   = ( in_array( $response_code, [200, 201], true ) ) ? 'PENDING' : 'LOCAL';
+        $status   = ( in_array( $response_code, [200, 201, 409], true ) ) ? 'PENDING' : 'LOCAL';
+        if ( $response_code === 409 ) {
+            $status = 'APPROVED'; // If it already exists, it might be approved or pending. We'll set it to a state that allows it to be used.
+        }
         $existing = null;
         if ( $is_standalone && $entity_id > 0 ) {
             $existing = $entity_id;
