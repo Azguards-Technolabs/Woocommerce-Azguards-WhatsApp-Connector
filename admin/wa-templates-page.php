@@ -61,12 +61,17 @@ if ( $edit_id > 0 ) {
         
         $saved_enable_buttons = ($saved_buttons_json !== '[]' && !empty($saved_buttons_json)) ? 'yes' : 'no';
         
-        $media_handle_data = json_decode($tpl['media_handle'] ?? '{}', true);
-        if ( is_array($media_handle_data) && !empty($media_handle_data) ) {
-            $saved_header_handle = $media_handle_data['document_id'] ?? '';
-            $saved_header_url = $media_handle_data['preview_link'] ?? '';
-        } else {
-            $saved_header_handle = $tpl['media_handle'] ?? ''; // Fallback
+        $media_handle_raw = $tpl['media_handle'] ?? '';
+        if ( ! empty( $media_handle_raw ) ) {
+            if ( strpos( $media_handle_raw, '{' ) === 0 ) {
+                $media_handle_data = json_decode( $media_handle_raw, true );
+                if ( is_array( $media_handle_data ) ) {
+                    $saved_header_handle = $media_handle_data['document_id'] ?? '';
+                    $saved_header_url    = $media_handle_data['preview_link'] ?? '';
+                }
+            } else {
+                $saved_header_handle = $media_handle_raw;
+            }
         }
     }
 } else {
@@ -106,6 +111,7 @@ wp_enqueue_script( 'wa-template-builder-js', plugins_url( '../assets/template-bu
     
     <input type="hidden" id="wa_current_hook" value="<?php echo esc_attr($hook_type); ?>">
     <input type="hidden" id="wa_edit_entity_id" value="<?php echo esc_attr($edit_id); ?>">
+    <input type="hidden" id="wa_save_template_nonce" value="<?php echo wp_create_nonce( 'wa_save_builder_template' ); ?>">
     <script>
         var RAW_CAROUSEL_CARDS = <?php echo empty($saved_carousel_cards_json) ? '[]' : $saved_carousel_cards_json; ?>;
     </script>

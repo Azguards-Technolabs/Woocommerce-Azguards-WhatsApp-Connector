@@ -163,20 +163,35 @@ if ( ! function_exists( 'wa_sync_templates_handler' ) ) :
             $category      = $template['category']['name'] ?? '';
             $language      = $template['language']['code'] ?? '';
 
-            $body_text     = '';
-            $header_format = '';
-            $media_handle  = '';
+            $body_text      = '';
+            $header_format  = '';
+            $header_text    = '';
+            $footer_text    = '';
+            $buttons        = [];
+            $carousel_cards = [];
+            $media_handle   = '';
 
             if ( ! empty( $template['components'] ) ) {
                 foreach ( $template['components'] as $component ) {
-                    if ( 'BODY' === $component['componentType'] ) {
-                        $body_text = $component['componentData'];
-                    }
-                    if ( 'HEADER' === $component['componentType'] ) {
+                    $comp_type = strtoupper($component['componentType'] ?? '');
+                    if ( 'BODY' === $comp_type ) {
+                        $body_text = $component['componentData'] ?? '';
+                    } elseif ( 'HEADER' === $comp_type ) {
                         $header_format = $component['componentFormat'] ?? '';
-                        if ( 'IMAGE' === $header_format || 'VIDEO' === $header_format || 'DOCUMENT' === $header_format ) {
-                            $media_handle = maybe_serialize( $component['componentData'] );
+                        if ( 'TEXT' === $header_format ) {
+                            $header_text = $component['componentData'] ?? '';
+                        } elseif ( in_array( $header_format, ['IMAGE', 'VIDEO', 'DOCUMENT'] ) ) {
+                            $media_handle = wp_json_encode( [
+                                'document_id'  => $component['componentData'] ?? '',
+                                'preview_link' => ''
+                            ] );
                         }
+                    } elseif ( 'FOOTER' === $comp_type ) {
+                        $footer_text = $component['componentData'] ?? '';
+                    } elseif ( 'BUTTONS' === $comp_type ) {
+                        $buttons = $component['componentData'] ?? [];
+                    } elseif ( 'CAROUSEL' === $comp_type ) {
+                        $carousel_cards = $component['componentData'] ?? [];
                     }
                 }
             }
@@ -184,20 +199,26 @@ if ( ! function_exists( 'wa_sync_templates_handler' ) ) :
             $existing = $wpdb->get_var( $wpdb->prepare( "SELECT entity_id FROM $table_name WHERE template_id = %s", $template_id ) );
 
             $data_to_save = array(
-                'template_id'   => $template_id,
-                'template_name' => $template_name,
-                'template_type' => $type,
-                'category'      => $category,
-                'language'      => $language,
-                'body'          => $body_text,
-                'header_format' => $header_format,
-                'media_handle'  => $media_handle,
-                'status'        => $status,
+                'template_id'    => $template_id,
+                'template_name'  => $template_name,
+                'template_type'  => $type,
+                'category'       => $category,
+                'language'       => $language,
+                'body'           => $body_text,
+                'header_format'  => $header_format,
+                'header_text'    => $header_text,
+                'footer'         => $footer_text,
+                'buttons'        => wp_json_encode( $buttons ),
+                'carousel_cards' => wp_json_encode( $carousel_cards ),
+                'media_handle'   => $media_handle,
+                'status'         => $status,
+                'updated_at'     => current_time( 'mysql' ),
             );
 
             if ( $existing ) {
                 $wpdb->update( $table_name, $data_to_save, array( 'entity_id' => $existing ) );
             } else {
+                $data_to_save['created_at'] = current_time( 'mysql' );
                 $wpdb->insert( $table_name, $data_to_save );
             }
             $synced_count++;
@@ -214,6 +235,13 @@ if ( ! function_exists( 'wa_save_builder_template_handler' ) ) :
         if ( ! current_user_can( 'manage_woocommerce' ) ) {
             wp_send_json_error( __( 'Unauthorized', 'whatsapp-connector' ) );
         }
+
+        // Ensure database table is up-to-date
+        if ( class_exists( 'WA_Database' ) ) {
+            WA_Database::create_tables();
+        }
+
+        check_ajax_referer( 'wa_save_builder_template', 'security' );
 
         $hook            = sanitize_text_field( $_POST['hook'] ?? '' );
         $is_standalone   = isset($_POST['is_standalone']) && $_POST['is_standalone'] === 'yes';
@@ -320,6 +348,15 @@ if ( ! function_exists( 'wa_save_builder_template_handler' ) ) :
         // Extract API template ID (the platform returns it under result.id or result.templateId)
         $api_template_id = $data['result']['id'] ?? $data['result']['templateId'] ?? $data['id'] ?? null;
 
+        // Handle 409 Conflict (Template already exists)
+        if ( $response_code === 409 ) {
+            // Attempt to find the existing template ID if not provided in the response
+            if ( ! $api_template_id ) {
+                // Look into component data or other fields if available in $data on conflict
+                $api_template_id = $data['error']['id'] ?? $data['error']['templateId'] ?? null;
+            }
+        }
+
         if ( $api_template_id && ! $is_standalone ) {
             update_option( "wa_template_{$hook}_assigned_id", $api_template_id );
 
@@ -361,7 +398,10 @@ if ( ! function_exists( 'wa_save_builder_template_handler' ) ) :
             update_option( "wa_template_{$hook}_assigned_id", $template_id );
         }
 
-        $status   = ( in_array( $response_code, [200, 201], true ) ) ? 'PENDING' : 'LOCAL';
+        $status   = ( in_array( $response_code, [200, 201, 409], true ) ) ? 'PENDING' : 'LOCAL';
+        if ( $response_code === 409 ) {
+            $status = 'APPROVED'; // If it already exists, it might be approved or pending. We'll set it to a state that allows it to be used.
+        }
         $existing = null;
         if ( $is_standalone && $entity_id > 0 ) {
             $existing = $entity_id;
