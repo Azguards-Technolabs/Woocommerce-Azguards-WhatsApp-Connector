@@ -122,30 +122,6 @@ if ( ! function_exists( 'wa_sync_templates_handler' ) ) :
             $token       = $auth_data['access_token'] ?? '';
         }
 
-        $response = wp_remote_get(
-            $api_url,
-            array(
-                'headers' => array(
-                    'Authorization' => 'Bearer ' . $token,
-                    'businessId'    => $business_id,
-                    'userId'        => $user_id,
-                ),
-                'timeout' => 30,
-            )
-        );
-
-        if ( is_wp_error( $response ) ) {
-            wp_send_json_error( __( 'Failed to fetch templates from API.', 'whatsapp-connector' ) );
-        }
-
-        $body = wp_remote_retrieve_body( $response );
-        error_log( "WA_RESPONSE: $body" );
-
-        $data = json_decode( $body, true );
-        if ( empty( $data['result']['data'] ) || ! is_array( $data['result']['data'] ) ) {
-            wp_send_json_error( __( 'No templates found or invalid response.', 'whatsapp-connector' ) );
-        }
-
         global $wpdb;
         $table_name = $wpdb->prefix . 'azguards_whatsapp_templates';
 
@@ -155,36 +131,76 @@ if ( ! function_exists( 'wa_sync_templates_handler' ) ) :
         }
 
         $synced_count = 0;
-        foreach ( $data['result']['data'] as $template ) {
-            $template_id   = $template['id'];
-            $template_name = $template['name'];
-            $status        = $template['status'];
-            $type          = $template['type'];
-            $category      = $template['category']['name'] ?? '';
-            $language      = $template['language']['code'] ?? '';
+        $next_url = $api_url;
+        $page_count = 0;
 
-            $body_text      = '';
-            $header_format  = '';
-            $header_text    = '';
-            $footer_text    = '';
-            $buttons        = [];
-            $carousel_cards = [];
-            $media_handle   = '';
+        error_log( "[WA Sync] Starting template sync. Initial URL: $api_url" );
 
-            if ( ! empty( $template['components'] ) ) {
-                foreach ( $template['components'] as $component ) {
-                    $comp_type = strtoupper($component['componentType'] ?? '');
-                    if ( 'BODY' === $comp_type ) {
-                        $body_text = $component['componentData'] ?? '';
-                    } elseif ( 'HEADER' === $comp_type ) {
-                        $header_format = $component['componentFormat'] ?? '';
-                        if ( 'TEXT' === $header_format ) {
-                            $header_text = $component['componentData'] ?? '';
-                        } elseif ( in_array( $header_format, ['IMAGE', 'VIDEO', 'DOCUMENT'] ) ) {
-                            $media_handle = wp_json_encode( [
-                                'document_id'  => $component['componentData'] ?? '',
-                                'preview_link' => ''
-                            ] );
+        while ( $next_url ) {
+            $page_count++;
+            error_log( "[WA Sync] Fetching page $page_count. URL: $next_url" );
+
+            $response = wp_remote_get(
+                $next_url,
+                array(
+                    'headers' => array(
+                        'Authorization' => 'Bearer ' . $token,
+                        'businessId'    => $business_id,
+                        'userId'        => $user_id,
+                    ),
+                    'timeout' => 30,
+                )
+            );
+
+            if ( is_wp_error( $response ) ) {
+                error_log( "WA_SYNC_ERROR: " . $response->get_error_message() );
+                break;
+            }
+
+            $body = wp_remote_retrieve_body( $response );
+            $data = json_decode( $body, true );
+
+            if ( empty( $data['result']['data'] ) || ! is_array( $data['result']['data'] ) ) {
+                error_log( "[WA Sync] No data found in page $page_count." );
+                break;
+            }
+
+            error_log( "[WA Sync] Found " . count( $data['result']['data'] ) . " templates in page $page_count." );
+
+            foreach ( $data['result']['data'] as $template ) {
+                $template_id   = $template['id'];
+                $template_name = $template['name'];
+                $status        = $template['status'];
+                $type          = $template['type'];
+                $category      = $template['category']['name'] ?? '';
+                $language      = $template['language']['code'] ?? '';
+
+                $body_text     = '';
+                $header_format = '';
+                $header_text    = '';
+                $media_handle   = '';
+                $footer_text    = '';
+                $buttons        = [];
+                $carousel_cards = [];
+
+                if ( ! empty( $template['components'] ) ) {
+                    foreach ( $template['components'] as $component ) {
+                        if ( 'BODY' === $component['componentType'] ) {
+                            $body_text = $component['componentData'];
+                        }
+                        if ( 'HEADER' === $component['componentType'] ) {
+                            $header_format = $component['componentFormat'] ?? '';
+                            if ( in_array($header_format, ['IMAGE', 'VIDEO', 'DOCUMENT']) ) {
+                                $media_handle = wp_json_encode( $component['componentData'] );
+                            } else {
+                                $header_text = $component['componentData'] ?? '';
+                            }
+                        }
+                        if ( 'FOOTER' === $component['componentType'] ) {
+                            $footer_text = $component['componentData'];
+                        }
+                        if ( 'BUTTONS' === $component['componentType'] ) {
+                            $buttons = $component['componentData'];
                         }
                     } elseif ( 'FOOTER' === $comp_type ) {
                         $footer_text = $component['componentData'] ?? '';
@@ -194,34 +210,58 @@ if ( ! function_exists( 'wa_sync_templates_handler' ) ) :
                         $carousel_cards = $component['componentData'] ?? [];
                     }
                 }
+
+                // Extra metadata from root if present
+                if ( ! empty( $template['cards'] ) && is_array( $template['cards'] ) ) {
+                    $carousel_cards = $template['cards'];
+                }
+
+                $existing = $wpdb->get_var( $wpdb->prepare( "SELECT entity_id FROM $table_name WHERE template_id = %s", $template_id ) );
+
+                $data_to_save = array(
+                    'template_id'    => $template_id,
+                    'template_name'  => $template_name,
+                    'template_type'  => $type,
+                    'category'       => $category,
+                    'language'       => $language,
+                    'body'           => $body_text,
+                    'header_format'  => $header_format,
+                    'header_text'    => $header_text ?? null,
+                    'footer'         => $footer_text,
+                    'buttons'        => wp_json_encode( $buttons ),
+                    'carousel_cards' => wp_json_encode( $carousel_cards ),
+                    'media_handle'   => $media_handle,
+                    'status'         => $status,
+                    'last_synced_at' => current_time( 'mysql' ),
+                );
+
+                if ( $existing ) {
+                    $wpdb->update( $table_name, $data_to_save, array( 'entity_id' => $existing ) );
+                } else {
+                    $wpdb->insert( $table_name, $data_to_save );
+                }
+                $synced_count++;
             }
 
-            $existing = $wpdb->get_var( $wpdb->prepare( "SELECT entity_id FROM $table_name WHERE template_id = %s", $template_id ) );
+            // Handle Pagination (Cursor-based)
+            // Assuming the API returns a 'next' link in result.paging.next or similar
+            $next_url = $data['result']['paging']['next'] ?? null;
 
-            $data_to_save = array(
-                'template_id'    => $template_id,
-                'template_name'  => $template_name,
-                'template_type'  => $type,
-                'category'       => $category,
-                'language'       => $language,
-                'body'           => $body_text,
-                'header_format'  => $header_format,
-                'header_text'    => $header_text,
-                'footer'         => $footer_text,
-                'buttons'        => wp_json_encode( $buttons ),
-                'carousel_cards' => wp_json_encode( $carousel_cards ),
-                'media_handle'   => $media_handle,
-                'status'         => $status,
-                'updated_at'     => current_time( 'mysql' ),
-            );
-
-            if ( $existing ) {
-                $wpdb->update( $table_name, $data_to_save, array( 'entity_id' => $existing ) );
-            } else {
-                $data_to_save['created_at'] = current_time( 'mysql' );
-                $wpdb->insert( $table_name, $data_to_save );
+            if ( $next_url ) {
+                error_log( "[WA Sync] Next page cursor found: $next_url" );
             }
-            $synced_count++;
+
+            // Limit loop safety
+            if ( $synced_count > 1000 ) {
+                error_log( "[WA Sync] Safety limit reached (1000 templates). Stopping sync." );
+                break;
+            }
+        }
+
+        error_log( "[WA Sync] Sync completed. Total pages: $page_count, Total templates: $synced_count" );
+
+        if ( $synced_count === 0 ) {
+            wp_send_json_error( __( 'No templates found or synchronization failed.', 'whatsapp-connector' ) );
         }
 
         wp_send_json_success( sprintf( __( 'Successfully synced %d templates.', 'whatsapp-connector' ), $synced_count ) );
@@ -260,6 +300,31 @@ if ( ! function_exists( 'wa_save_builder_template_handler' ) ) :
         
         $template_type   = strtoupper( sanitize_text_field( $_POST['template_type'] ?? 'TEXT' ) );
         $carousel_cards  = wp_unslash( $_POST['carousel_cards'] ?? '[]' );
+
+        // --- 0. Server-side Validation ---
+        if ( empty( $template_name ) ) {
+            wp_send_json_error( __( 'Template name is required.', 'whatsapp-connector' ) );
+        }
+        if ( ! preg_match( '/^[a-z0-9_]+$/i', $template_name ) ) {
+            wp_send_json_error( __( 'Template name must contain only alphanumeric characters and underscores.', 'whatsapp-connector' ) );
+        }
+        if ( ! in_array( strtoupper( $category ), [ 'UTILITY', 'MARKETING', 'AUTHENTICATION' ], true ) ) {
+            wp_send_json_error( __( 'Invalid category selected.', 'whatsapp-connector' ) );
+        }
+        if ( empty( $body_template ) ) {
+            wp_send_json_error( __( 'Message body is required.', 'whatsapp-connector' ) );
+        }
+
+        // Validate JSON fields
+        if ( ! empty( $_POST['buttons'] ) && ! is_array( $_POST['buttons'] ) ) {
+             wp_send_json_error( __( 'Invalid buttons format.', 'whatsapp-connector' ) );
+        }
+        if ( ! empty( $_POST['carousel_cards'] ) ) {
+            $cards_test = json_decode( $carousel_cards, true );
+            if ( json_last_error() !== JSON_ERROR_NONE ) {
+                wp_send_json_error( __( 'Invalid carousel cards JSON.', 'whatsapp-connector' ) );
+            }
+        }
 
         // The new Template Type dropdown sends combined values (TEXT/IMAGE/VIDEO/DOCUMENT/CAROUSEL).
         // Expand them into the real template_type and header_type for the payload builder + DB.
@@ -321,6 +386,9 @@ if ( ! function_exists( 'wa_save_builder_template_handler' ) ) :
             $carousel_cards
         );
 
+        error_log( "[WA Builder] Creating/Updating Template: $template_name (Type: $template_type)" );
+        error_log( "[WA Builder] API Payload: " . wp_json_encode( $payload ) );
+
         $response = wp_remote_post( $api_url, [
             'headers' => [
                 'Authorization' => 'Bearer ' . $token,
@@ -333,10 +401,8 @@ if ( ! function_exists( 'wa_save_builder_template_handler' ) ) :
         ] );
 
         if ( is_wp_error( $response ) ) {
-            wp_send_json_success( [
-                'message'    => __( 'Template saved locally. API request failed: ', 'whatsapp-connector' ) . $response->get_error_message(),
-                'api_synced' => false,
-            ] );
+            error_log( "[WA Builder] API Error: " . $response->get_error_message() );
+            // Continue to save locally
         }
 
         $response_code = wp_remote_retrieve_response_code( $response );
@@ -427,10 +493,20 @@ if ( ! function_exists( 'wa_save_builder_template_handler' ) ) :
         ];
 
         if ( $existing ) {
-            $wpdb->update( $table_name, $db_data, [ 'entity_id' => $existing ] );
+            $result = $wpdb->update( $table_name, $db_data, [ 'entity_id' => $existing ] );
+            if ( false === $result ) {
+                error_log( "[WA Builder] DB Update Error: " . $wpdb->last_error );
+            } else {
+                error_log( "[WA Builder] DB Updated successfully for entity_id: $existing" );
+            }
         } else {
             $db_data['created_at'] = current_time( 'mysql' );
-            $wpdb->insert( $table_name, $db_data );
+            $result = $wpdb->insert( $table_name, $db_data );
+            if ( false === $result ) {
+                error_log( "[WA Builder] DB Insert Error: " . $wpdb->last_error );
+            } else {
+                error_log( "[WA Builder] DB Inserted successfully. ID: " . $wpdb->insert_id );
+            }
         }
 
         if ( in_array( $response_code, [200, 201], true ) ) {

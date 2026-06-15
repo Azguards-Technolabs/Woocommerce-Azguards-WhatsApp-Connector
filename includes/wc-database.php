@@ -29,10 +29,14 @@ class WA_Database {
             carousel_cards text DEFAULT NULL,
             media_handle varchar(255) DEFAULT NULL,
             status varchar(50) NOT NULL DEFAULT 'PENDING',
-            created_at datetime DEFAULT CURRENT_TIMESTAMP NOT NULL,
-            updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP NOT NULL,
+            created_at datetime DEFAULT CURRENT_TIMESTAMP,
+            updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            last_synced_at datetime DEFAULT NULL,
             PRIMARY KEY  (entity_id),
-            UNIQUE KEY template_id (template_id)
+            UNIQUE KEY template_id (template_id),
+            KEY status (status),
+            KEY category (category),
+            KEY language (language)
         ) $charset_collate;";
 
         // 2. Campaigns Table
