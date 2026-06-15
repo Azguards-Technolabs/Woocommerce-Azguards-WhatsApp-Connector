@@ -120,9 +120,13 @@ wp_enqueue_script( 'wa-template-builder-js', plugins_url( '../assets/template-bu
     <div class="wa-builder-container">
         <!-- Left Side: Form Elements -->
         <div class="wa-builder-form">
-            <!-- <div class="wa-status-bar">
-                <span>Meta Status: <strong>approved</strong> (e8dfd6...)</span>
-            </div> -->
+            <div class="wa-status-bar">
+                <?php if ($edit_id > 0 && isset($tpl)): ?>
+                    <span>Status: <strong class="status-<?php echo esc_attr(strtolower($tpl['status'] ?? 'unknown')); ?>"><?php echo esc_html($tpl['status'] ?? 'UNKNOWN'); ?></strong> (<?php echo esc_html($tpl['template_id'] ?? 'No Meta ID'); ?>)</span>
+                <?php else: ?>
+                    <span>Status: <strong>NEW TEMPLATE</strong></span>
+                <?php endif; ?>
+            </div>
 
             <table class="form-table">
                 <tbody>
