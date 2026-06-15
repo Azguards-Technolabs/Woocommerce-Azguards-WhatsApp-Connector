@@ -120,9 +120,9 @@ wp_enqueue_script( 'wa-template-builder-js', plugins_url( '../assets/template-bu
     <div class="wa-builder-container">
         <!-- Left Side: Form Elements -->
         <div class="wa-builder-form">
-            <div class="wa-status-bar">
+            <!-- <div class="wa-status-bar">
                 <span>Meta Status: <strong>approved</strong> (e8dfd6...)</span>
-            </div>
+            </div> -->
 
             <table class="form-table">
                 <tbody>
@@ -363,7 +363,7 @@ wp_enqueue_script( 'wa-template-builder-js', plugins_url( '../assets/template-bu
                 </div>
                 <div class="wa-chat-header">
                     <div class="wa-chat-avatar">WA</div>
-                    <div class="wa-chat-name">Magento Store</div>
+                    <div class="wa-chat-name">WooCommerce Store</div>
                 </div>
                 <div class="wa-chat-body">
                     <div class="wa-message-bubble">

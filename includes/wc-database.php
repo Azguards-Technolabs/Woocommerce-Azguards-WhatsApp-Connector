@@ -89,5 +89,25 @@ class WA_Database {
         dbDelta( $sql_campaigns );
         dbDelta( $sql_queue );
         dbDelta( $sql_abandoned );
+
+        self::maybe_upgrade();
+    }
+
+    /**
+     * Add missing columns on existing installs (dbDelta does not always alter tables).
+     */
+    public static function maybe_upgrade() {
+        global $wpdb;
+
+        $table_templates = $wpdb->prefix . 'azguards_whatsapp_templates';
+
+        if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table_templates ) ) !== $table_templates ) {
+            return;
+        }
+
+        $column = $wpdb->get_var( "SHOW COLUMNS FROM `$table_templates` LIKE 'last_synced_at'" );
+        if ( null === $column ) {
+            $wpdb->query( "ALTER TABLE `$table_templates` ADD COLUMN last_synced_at datetime DEFAULT NULL AFTER updated_at" );
+        }
     }
 }
