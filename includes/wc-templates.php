@@ -456,6 +456,23 @@ if ( ! function_exists( 'wa_save_builder_template_handler' ) ) :
         $business_id = get_option( 'wa_business_id', '' );
         $user_id     = get_option( 'wa_user_id', '' );
 
+        // Determine if we are updating an existing template
+        $existing_api_id = null;
+        global $wpdb;
+        $table_name = $wpdb->prefix . 'azguards_whatsapp_templates';
+
+        if ( $is_standalone && $entity_id > 0 ) {
+            $existing_api_id = $wpdb->get_var( $wpdb->prepare( "SELECT template_id FROM {$table_name} WHERE entity_id = %d", $entity_id ) );
+        } elseif ( ! $is_standalone && ! empty( $hook ) ) {
+            $existing_api_id = get_option( "wa_template_{$hook}_assigned_id" );
+        }
+
+        $method = 'POST';
+        if ( $existing_api_id && strpos( $existing_api_id, 'tpl_' ) !== 0 ) {
+            $method  = 'PUT';
+            $api_url .= '/' . urlencode( $existing_api_id );
+        }
+
         $payload = wa_build_template_api_payload(
             $template_name, $category, $language,
             $header_type, $header_text,
@@ -467,21 +484,7 @@ if ( ! function_exists( 'wa_save_builder_template_handler' ) ) :
             $carousel_cards
         );
 
-        // --- Determine if we should POST (create) or PUT (update) ---
-        global $wpdb;
-        $table_name   = $wpdb->prefix . 'azguards_whatsapp_templates';
-        $existing_template_id = null;
-        if ( $entity_id > 0 ) {
-            $existing_template_id = $wpdb->get_var( $wpdb->prepare( "SELECT template_id FROM {$table_name} WHERE entity_id = %d", $entity_id ) );
-        }
-
-        $method = 'POST';
-        if ( $existing_template_id ) {
-            $method  = 'PUT';
-            $api_url = $api_url . '/' . urlencode( $existing_template_id );
-        }
-
-        error_log( "[WA Builder] Method: $method | Template: $template_name (Type: $template_type) | URL: $api_url" );
+        error_log( "[WA Builder] $method Template: $template_name (Type: $template_type) to URL: $api_url" );
         error_log( "[WA Builder] API Payload: " . wp_json_encode( $payload ) );
 
         $response = wp_remote_request( $api_url, [
