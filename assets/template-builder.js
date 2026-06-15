@@ -79,17 +79,22 @@ jQuery(document).ready(function ($) {
 
             // Auto-set header type and show correct row based on template type
             if (type === 'TEXT') {
-                $('#wa_header_type').val('TEXT').trigger('change');
+                $('#wa_header_type').val('TEXT');
             } else if (type === 'IMAGE' || type === 'VIDEO' || type === 'DOCUMENT') {
-                $('#wa_header_type').val(type).trigger('change');
+                $('#wa_header_type').val(type);
             }
+            $('#wa_header_type').trigger('change');
 
             if ($('#wa_enable_buttons').length) {
                 $('#wa_enable_buttons').trigger('change');
             }
         }
         updatePreview();
-    }).trigger('change');
+    });
+
+    // Manually trigger initial state to respect saved values
+    $('#wa_template_type').trigger('change');
+    $('#wa_header_type').trigger('change');
 
     $('#wa_header_type').on('change', function () {
         var type = $(this).val();
@@ -103,7 +108,7 @@ jQuery(document).ready(function ($) {
             $('#wa_header_text_row').hide();
             $('#wa_header_media_row').show();
         }
-    }).trigger('change');
+    });
 
     var custom_uploader;
     $('#wa_upload_media_btn').on('click', function (e) {
