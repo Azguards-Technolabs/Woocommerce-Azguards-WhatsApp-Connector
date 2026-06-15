@@ -26,6 +26,7 @@ $buttons = json_decode($buttons_json, true) ?: [];
 
 <div class="wa-template-wrap" style="padding:0; margin:0;" data-hook="<?php echo esc_attr($hook_type); ?>">
     <input type="hidden" class="wa_current_hook" value="<?php echo esc_attr($hook_type); ?>">
+    <input type="hidden" id="wa_save_template_nonce_<?php echo esc_attr($hook_type); ?>" value="<?php echo wp_create_nonce( 'wa_save_builder_template' ); ?>">
 
     <div class="wa-builder-container" id="wa-builder-<?php echo esc_attr($hook_type); ?>" style="display:flex; gap:20px;">
         <!-- Left Side: Form Elements -->
@@ -169,6 +170,7 @@ jQuery(function($) {
 
         var postData = {
             action:         'wa_save_builder_template',
+            security:       $('#wa_save_template_nonce_' + hookType).val(),
             hook:           hookType,
             template_name:  $('input[name="' + prefix + 'template_name"]').val(),
             category:       $('select[name="' + prefix + 'category"]').val(),
