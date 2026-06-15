@@ -142,6 +142,29 @@ add_action( 'admin_menu', function () {
     );
 } );
 
+/**
+ * Ensure WhatTack Template Builder and Campaign Edit pages are highlighted in WooCommerce menu
+ */
+add_filter( 'parent_file', function ( $parent_file ) {
+    $screen = get_current_screen();
+    if ( $screen && in_array( $screen->id, [ 'admin_page_wa-template-builder', 'admin_page_wa-campaign-edit' ] ) ) {
+        return 'woocommerce';
+    }
+    return $parent_file;
+} );
+
+add_filter( 'submenu_file', function ( $submenu_file ) {
+    $screen = get_current_screen();
+    if ( $screen ) {
+        if ( $screen->id === 'admin_page_wa-template-builder' ) {
+            return 'wa-templates-grid';
+        } elseif ( $screen->id === 'admin_page_wa-campaign-edit' ) {
+            return 'wa-campaigns';
+        }
+    }
+    return $submenu_file;
+} );
+
 add_action( 'current_screen', function () {
     global $title;
     if ( isset( $_GET['page'] ) ) {

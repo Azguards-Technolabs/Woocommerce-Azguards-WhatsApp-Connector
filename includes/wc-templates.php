@@ -202,12 +202,9 @@ if ( ! function_exists( 'wa_sync_templates_handler' ) ) :
                         if ( 'BUTTONS' === $component['componentType'] ) {
                             $buttons = $component['componentData'];
                         }
-                    } elseif ( 'FOOTER' === $comp_type ) {
-                        $footer_text = $component['componentData'] ?? '';
-                    } elseif ( 'BUTTONS' === $comp_type ) {
-                        $buttons = $component['componentData'] ?? [];
-                    } elseif ( 'CAROUSEL' === $comp_type ) {
-                        $carousel_cards = $component['componentData'] ?? [];
+                        if ( 'CAROUSEL' === $component['componentType'] ) {
+                            $carousel_cards = $component['componentData'];
+                        }
                     }
                 }
 
@@ -386,10 +383,25 @@ if ( ! function_exists( 'wa_save_builder_template_handler' ) ) :
             $carousel_cards
         );
 
-        error_log( "[WA Builder] Creating/Updating Template: $template_name (Type: $template_type)" );
+        // --- Determine if we should POST (create) or PUT (update) ---
+        global $wpdb;
+        $table_name   = $wpdb->prefix . 'azguards_whatsapp_templates';
+        $existing_template_id = null;
+        if ( $entity_id > 0 ) {
+            $existing_template_id = $wpdb->get_var( $wpdb->prepare( "SELECT template_id FROM {$table_name} WHERE entity_id = %d", $entity_id ) );
+        }
+
+        $method = 'POST';
+        if ( $existing_template_id ) {
+            $method  = 'PUT';
+            $api_url = $api_url . '/' . urlencode( $existing_template_id );
+        }
+
+        error_log( "[WA Builder] Method: $method | Template: $template_name (Type: $template_type) | URL: $api_url" );
         error_log( "[WA Builder] API Payload: " . wp_json_encode( $payload ) );
 
-        $response = wp_remote_post( $api_url, [
+        $response = wp_remote_request( $api_url, [
+            'method'  => $method,
             'headers' => [
                 'Authorization' => 'Bearer ' . $token,
                 'Content-Type'  => 'application/json',
@@ -514,6 +526,11 @@ if ( ! function_exists( 'wa_save_builder_template_handler' ) ) :
                 'message'     => __( 'Template submitted to Meta API successfully! It will appear as PENDING until approved.', 'whatsapp-connector' ),
                 'api_synced'  => true,
                 'template_id' => $api_template_id,
+            ] );
+        } elseif ( $response_code === 409 ) {
+            wp_send_json_success( [
+                'message'    => __( 'Template updated locally. Meta API reported a conflict (it already exists), but local changes were saved.', 'whatsapp-connector' ),
+                'api_synced' => false,
             ] );
         } else {
             wp_send_json_success( [
