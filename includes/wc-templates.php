@@ -285,7 +285,7 @@ if ( ! function_exists( 'wa_sync_templates_handler' ) ) :
                             $buttons = $component['componentData'];
                         }
                         if ( 'CAROUSEL' === $component['componentType'] ) {
-                            $carousel_cards = $component['componentData'] ?? [];
+                            $carousel_cards = $component['componentData'];
                         }
                     }
                 }
@@ -613,6 +613,11 @@ if ( ! function_exists( 'wa_save_builder_template_handler' ) ) :
                 'message'     => __( 'Template submitted to Meta API successfully! It will appear as PENDING until approved.', 'whatsapp-connector' ),
                 'api_synced'  => true,
                 'template_id' => $api_template_id,
+            ] );
+        } elseif ( $response_code === 409 ) {
+            wp_send_json_success( [
+                'message'    => __( 'Template updated locally. Meta API reported a conflict (it already exists), but local changes were saved.', 'whatsapp-connector' ),
+                'api_synced' => false,
             ] );
         } else {
             wp_send_json_success( [
