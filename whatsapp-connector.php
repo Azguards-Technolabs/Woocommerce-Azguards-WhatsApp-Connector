@@ -14,6 +14,8 @@ require_once plugin_dir_path( __FILE__ ) . 'includes/wc-defaults.php';
 require_once plugin_dir_path( __FILE__ ) . 'includes/wc-auth.php';
 require_once plugin_dir_path( __FILE__ ) . 'includes/wc-templates.php';
 require_once plugin_dir_path( __FILE__ ) . 'includes/wc-contact.php';
+require_once plugin_dir_path( __FILE__ ) . 'includes/wc-customer-sync.php';
+require_once plugin_dir_path( __FILE__ ) . 'includes/wc-campaign-api.php';
 require_once plugin_dir_path( __FILE__ ) . 'includes/wc-message.php';
 require_once plugin_dir_path( __FILE__ ) . 'includes/wc-variable.php';
 require_once plugin_dir_path( __FILE__ ) . 'includes/wc-woocommerce-variables.php';
@@ -91,22 +93,31 @@ add_filter( 'woocommerce_get_settings_pages', function ( $pages ) {
  * Add Top Level Menu for WhatsApp Grids instead of hiding in WooCommerce
  */
 add_action( 'admin_menu', function () {
-    // 1. WhatsApp Campaigns (Top Level Menu)
-    add_menu_page(
-        __( 'WhatsApp Campaigns', 'whatsapp-connector' ),
-        __( 'WhatsApp Campaigns', 'whatsapp-connector' ),
+    // 1. WhatTack Customers (Submenu under WooCommerce)
+    add_submenu_page(
+        'woocommerce',
+        __( 'WhatTack Customers', 'whatsapp-connector' ),
+        __( 'WhatTack Customers', 'whatsapp-connector' ),
         'manage_woocommerce',
-        'wa-campaigns',
-        'wa_render_campaigns_grid',
-        'dashicons-megaphone',
-        56
+        'wa-customers',
+        'wa_customers_grid_callback'
     );
 
-    // 2. WhatsApp Templates (Submenu under Campaigns or Top Level)
+    // 2. WhatTack Campaigns (Submenu under WooCommerce)
     add_submenu_page(
+        'woocommerce',
+        __( 'Campaigns', 'whatsapp-connector' ),
+        __( 'WhatTack Campaigns', 'whatsapp-connector' ),
+        'manage_woocommerce',
         'wa-campaigns',
-        __( 'Templates', 'whatsapp-connector' ),
-        __( 'Templates', 'whatsapp-connector' ),
+        'wa_campaign_grid_callback'
+    );
+
+    // 2. WhatTack Templates (Submenu under WooCommerce)
+    add_submenu_page(
+        'woocommerce',
+        __( 'WhatTack Templates', 'whatsapp-connector' ),
+        __( 'WhatTack Templates', 'whatsapp-connector' ),
         'manage_woocommerce',
         'wa-templates-grid',
         'wa_render_templates_grid'
@@ -131,7 +142,24 @@ add_action( 'admin_menu', function () {
     );
 } );
 
-function wa_render_campaigns_grid() {
+add_action( 'current_screen', function () {
+    global $title;
+    if ( isset( $_GET['page'] ) ) {
+        if ( $_GET['page'] === 'wa-template-builder' ) {
+            $title = __( 'Create Template', 'whatsapp-connector' );
+        } elseif ( $_GET['page'] === 'wa-campaign-edit' ) {
+            $title = __( 'Edit Campaign', 'whatsapp-connector' );
+        }
+    }
+} );
+
+
+
+function wa_customers_grid_callback() {
+    require_once WC_WHATSAPP_CONNECTOR_PATH . 'admin/wa-customers-grid.php';
+}
+
+function wa_campaign_grid_callback() {
     require_once WC_WHATSAPP_CONNECTOR_PATH . 'admin/wa-campaigns-grid.php';
 }
 

@@ -53,14 +53,36 @@ class WA_Auth {
         $body = wp_remote_retrieve_body( $response );
         $data = json_decode( $body, true );
 
+        if ( ! is_array( $data ) ) {
+            $status_code = wp_remote_retrieve_response_code( $response );
+            $error_message = sprintf( __( 'Invalid response from authentication API (HTTP %d). Response: %s', 'whatsapp-connector' ), $status_code, esc_html( wp_trim_words( $body, 20 ) ) );
+            return new WP_Error( 'api_error', $error_message );
+        }
+
         if ( isset( $data['error'] ) ) {
             return new WP_Error( 'api_error', isset( $data['error_description'] ) ? $data['error_description'] : $data['error'] );
+        }
+
+        if ( empty( $data['access_token'] ) ) {
+            return new WP_Error( 'api_error', __( 'No access token provided by the server.', 'whatsapp-connector' ) );
         }
 
         $token     = $data['access_token'];
         $expires_in = isset( $data['expires_in'] ) ? absint( $data['expires_in'] ) : 3600;
 
         set_transient( 'wa_access_token', $token, $expires_in );
+
+        // Extract tenant and user IDs from JWT token
+        $token_parts = explode( '.', $token );
+        if ( count( $token_parts ) === 3 ) {
+            $payload = json_decode( base64_decode( str_replace( array( '-', '_' ), array( '+', '/' ), $token_parts[1] ) ), true );
+            if ( ! empty( $payload['active_tenant']['tenant_id'] ) ) {
+                update_option( 'wa_business_id', $payload['active_tenant']['tenant_id'] );
+            }
+            if ( ! empty( $payload['sub'] ) ) {
+                update_option( 'wa_user_id', $payload['sub'] );
+            }
+        }
 
         return $data;
     }

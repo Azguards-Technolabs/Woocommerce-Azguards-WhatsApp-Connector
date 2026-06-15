@@ -102,4 +102,25 @@ jQuery(function ($) {
             $(`#wa_${key}_template`).on('change', toggleVariableTables);
         });
     });
+
+    $('#wa-sync-templates-btn').on('click', function(e) {
+        e.preventDefault();
+        let $btn = $(this);
+        if ($btn.hasClass('disabled')) return;
+
+        $btn.addClass('disabled').text('Syncing...');
+
+        $.post(ajaxurl, {
+            action: 'wa_sync_templates',
+            security: $btn.data('nonce')
+        }, function(response) {
+            $btn.removeClass('disabled').text('Sync Templates');
+            if (response.success) {
+                alert(response.data);
+                location.reload();
+            } else {
+                alert(response.data || 'Sync failed.');
+            }
+        });
+    });
 });
