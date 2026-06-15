@@ -57,15 +57,17 @@ function wa_process_template_variables( $template_option_key, $source_object ) {
  *
  * @return string The corresponding dial code, or an empty string if not found.
  */
-function wa_get_dial_code_by_country( $country_code ) {
-    $dial_codes = [
-        'IN' => '91',
-        'US' => '1',
-        'GB' => '44',
-        'AE' => '971',
-        'CA' => '1',
-        'AU' => '61',
-    ];
+if ( ! function_exists( 'wa_get_dial_code_by_country' ) ) {
+    function wa_get_dial_code_by_country( $country_code ) {
+        $dial_codes = [
+            'IN' => '91',
+            'US' => '1',
+            'GB' => '44',
+            'AE' => '971',
+            'CA' => '1',
+            'AU' => '61',
+        ];
 
-    return $dial_codes[ strtoupper( $country_code ) ] ?? '';
+        return $dial_codes[ strtoupper( $country_code ) ] ?? '';
+    }
 }

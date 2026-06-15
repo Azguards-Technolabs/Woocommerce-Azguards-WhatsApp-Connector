@@ -1,134 +1,87 @@
 <?php
 
-require_once plugin_dir_path( __FILE__ ) . 'Events/EventInterface.php';
-require_once plugin_dir_path( __FILE__ ) . 'Events/OrderCreatedEvent.php';
-require_once plugin_dir_path( __FILE__ ) . 'Events/OrderCompletedEvent.php';
-
-/**
- * Handle the "Order Created" event using isolated Observer.
- */
-add_action( 'woocommerce_thankyou', 'wa_handle_order_created_isolated', 10, 1 );
-function wa_handle_order_created_isolated( $order_id ) {
-    $event = new WA_Order_Created_Event();
-    $event->execute( $order_id );
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
 }
 
 /**
- * Handle the "Completed/Shipped" event using isolated Observer.
+ * Hook: Order Created
+ * Fires when a new order is created.
  */
-add_action( 'woocommerce_order_status_completed', 'wa_handle_order_completed_isolated', 10, 1 );
-function wa_handle_order_completed_isolated( $order_id ) {
-    $event = new WA_Order_Completed_Event();
-    $event->execute( $order_id );
+add_action( 'woocommerce_thankyou', 'wa_trigger_order_created', 10, 1 );
+function wa_trigger_order_created( $order_id ) {
+    wa_dispatch_event_template( $order_id, 'wa_enable_order_created', 'wa_order_creation_template', 'wa_order_creation_table_data', 'Order Created' );
 }
 
 /**
- * Handle the "On Hold" status change.
- *
- * @param int $order_id The order ID.
+ * Hook: Invoice Created (Payment Complete)
+ * Fires when an order payment is completed.
  */
-add_action( 'woocommerce_order_status_on-hold', 'wa_handle_order_on_hold', 10, 1 );
-function wa_handle_order_on_hold( $order_id ) {
-    wa_handle_generic_order_event( $order_id, 'wa_order_on_hold_template', 'wa_order_on_hold_table_data', 'Order On Hold' );
+add_action( 'woocommerce_payment_complete', 'wa_trigger_invoice_created', 10, 1 );
+function wa_trigger_invoice_created( $order_id ) {
+    wa_dispatch_event_template( $order_id, 'wa_enable_order_invoice', 'wa_order_invoice_template', 'wa_order_invoice_table_data', 'Invoice Created' );
 }
 
 /**
- * Handle the "Failed" status change.
- *
- * @param int $order_id The order ID.
+ * Hook: Order Shipped (Order Completed)
+ * Fires when an order is marked as completed (shipped).
  */
-add_action( 'woocommerce_order_status_failed', 'wa_handle_order_failed', 10, 1 );
-function wa_handle_order_failed( $order_id ) {
-    wa_handle_generic_order_event( $order_id, 'wa_order_failed_template', 'wa_order_failed_table_data', 'Order Failed' );
+add_action( 'woocommerce_order_status_completed', 'wa_trigger_order_shipped', 10, 1 );
+function wa_trigger_order_shipped( $order_id ) {
+    wa_dispatch_event_template( $order_id, 'wa_enable_order_shipment', 'wa_order_shipment_template', 'wa_order_shipment_table_data', 'Order Shipped' );
 }
 
 /**
- * Handle the "Completed" status change.
- *
- * @param int $order_id The order ID.
+ * Hook: Order Cancelled
+ * Fires when an order is cancelled.
  */
-add_action( 'woocommerce_order_status_completed', 'wa_handle_order_completed', 10, 1 );
-function wa_handle_order_completed( $order_id ) {
-    wa_handle_generic_order_event( $order_id, 'wa_order_completed_template', 'wa_order_completed_table_data', 'Order Completed' );
+add_action( 'woocommerce_order_status_cancelled', 'wa_trigger_order_cancelled', 10, 1 );
+function wa_trigger_order_cancelled( $order_id ) {
+    wa_dispatch_event_template( $order_id, 'wa_enable_order_cancellation', 'wa_order_cancellation_template', 'wa_order_cancellation_table_data', 'Order Cancelled' );
 }
 
 /**
- * Handle the "Draft" (Custom Status) change.
- *
- * @param int $order_id The order ID.
+ * Hook: Order Refunded
+ * Fires when an order is fully refunded.
  */
-add_action( 'woocommerce_order_status_draft', 'wa_handle_order_draft', 10, 1 );
-function wa_handle_order_draft( $order_id ) {
-    wa_handle_generic_order_event( $order_id, 'wa_order_draft_template', 'wa_order_draft_table_data', 'Order Draft' );
+add_action( 'woocommerce_order_fully_refunded', 'wa_trigger_order_refunded', 10, 1 );
+function wa_trigger_order_refunded( $order_id ) {
+    wa_dispatch_event_template( $order_id, 'wa_enable_order_creditmemo', 'wa_order_credit_memo_template', 'wa_order_credit_memo_table_data', 'Order Refunded' );
 }
 
 /**
- * Handle the "Payment Complete" event.
- *
- * @param int $order_id The order ID.
+ * Common dispatcher for WooCommerce events
  */
-add_action( 'woocommerce_payment_complete', 'wa_handle_invoice_created', 10, 1 );
-function wa_handle_invoice_created( $order_id ) {
-    wa_handle_generic_order_event( $order_id, 'wa_order_invoice_template', 'wa_order_invoice_table_data', 'Order Invoice' );
-}
-
-/**
- * Handle the "Order Fully Refunded" event.
- *
- * @param int $order_id The order ID.
- */
-add_action( 'woocommerce_order_fully_refunded', 'wa_handle_order_refunded', 10, 1 );
-function wa_handle_order_refunded( $order_id ) {
-    wa_handle_generic_order_event( $order_id, 'wa_order_credit_memo_template', 'wa_order_credit_memo_table_data', 'Order Refunded' );
-}
-
-/**
- * Handle the "Order Cancelled" event.
- *
- * @param int $order_id The order ID.
- */
-add_action( 'woocommerce_order_status_cancelled', 'wa_handle_order_cancelled', 10, 1 );
-function wa_handle_order_cancelled( $order_id ) {
-    wa_handle_generic_order_event( $order_id, 'wa_order_cancellation_template', 'wa_order_cancellation_table_data', 'Order Cancelled' );
-}
-
-/**
- * Handle the "Order Created" event.
- *
- * @param int $order_id The order ID.
- */
-add_action( 'woocommerce_thankyou', 'wa_handle_order_created', 10, 1 );
-function wa_handle_order_created( $order_id ) {
-    wa_handle_generic_order_event( $order_id, 'wa_order_creation_template', 'wa_order_creation_table_data', 'Order Created' );
-}
-
-/**
- * Generic handler for all order status events.
- *
- * @param int    $order_id        The order ID.
- * @param string $template_option_key The template option key.
- * @param string $variable_key    The variable key for template data.
- * @param string $log_context     The log context for error logging.
- */
-function wa_handle_generic_order_event( $order_id, $template_option_key, $variable_key, $log_context = '' ) {
-    $order = wc_get_order( $order_id );
-    if ( ! $order ) {
+function wa_dispatch_event_template( $order_id, $enable_key, $template_key, $variable_key, $log_context ) {
+    // Check if the connector is enabled globally
+    if ( get_option( 'wa_enable_connector' ) !== 'yes' ) {
         return;
     }
 
-    $template_id = get_option( $template_option_key );
+    // Check if this specific event is enabled
+    if ( get_option( $enable_key, 'yes' ) !== 'yes' ) {
+        error_log( "[WhatsApp] Event '{$log_context}' is disabled in settings. Skipping." );
+        return;
+    }
+
+    $order = wc_get_order( $order_id );
+    if ( ! $order ) {
+        error_log( "[WhatsApp] Order #{$order_id} not found for event '{$log_context}'. Skipping." );
+        return;
+    }
+
+    $template_id = get_option( $template_key );
+    if ( empty( $template_id ) ) {
+        error_log( "[WhatsApp] No template configured for '{$log_context}' (option key: {$template_key}). Skipping." );
+        return;
+    }
+
+    error_log( "[WhatsApp] Dispatching '{$log_context}' for Order #{$order_id} with template '{$template_id}'." );
+
     $variables   = wa_process_template_variables( $variable_key, $order );
     $user_detail = wa_get_user_detail_data( $order );
 
-    $billing_country = $order->get_billing_country();
-    // Uncomment and use this line if you want to set country code.
-    // $variables['countryCode'] = wa_get_dial_code_by_country( $billing_country );
-
-    if ( $template_id ) {
-        WA_Message::send_message( $variables, $template_id, $log_context, $user_detail );
-    } else {
-        error_log( 'Select Template Admin Config for ' . $log_context );
-    }
+    WA_Message::send_message( $variables, $template_id, $log_context, $user_detail );
 }
 
 /**

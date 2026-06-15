@@ -43,11 +43,7 @@ class WA_Message {
             $token = $auth_token_data['access_token'];
         }
 
-        $base_url = get_option( 'wa_template_api_url' );
-        if ( empty( $base_url ) ) {
-            return new WP_Error( 'api_error', __( 'API Base URL not set in WooCommerce settings.', 'whatsapp-connector' ) );
-        }
-        $api_url = rtrim( $base_url, '/' ) . '/messaging-service/api/v1/message/send';
+        $api_url = get_option( 'wa_message_api_url' );
 
         $converted_placeholder_values = array();
         foreach ( $template_variables as $key => $value ) {

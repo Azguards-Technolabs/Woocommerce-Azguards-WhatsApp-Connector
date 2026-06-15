@@ -51,7 +51,7 @@ $buttons = json_decode($buttons_json, true) ?: [];
                 </div>
                 <div class="wa-form-row" style="flex:1;">
                     <label style="display:block; margin-bottom:5px;">Language</label>
-                    <input type="text" name="wa_template_<?php echo esc_attr($hook_type); ?>_language" value="<?php echo esc_attr($language); ?>" style="width:100%;">
+                    <input type="text" name="wa_template_<?php echo esc_attr($hook_type); ?>_language" value="<?php echo esc_attr(get_locale()); ?>" style="width:100%; background:#eee;" readonly>
                 </div>
             </div>
 
@@ -108,7 +108,13 @@ $buttons = json_decode($buttons_json, true) ?: [];
             </div>
 
             <p class="submit" style="padding:0; margin-top:20px;">
-                <input type="submit" name="save" class="button button-primary" value="Save Template Settings" style="background:#ea5c0b; border:none;">
+                <button type="button" id="wa_save_settings_template_<?php echo esc_attr($hook_type); ?>"
+                    class="button button-primary wa-save-settings-btn"
+                    data-hook="<?php echo esc_attr($hook_type); ?>"
+                    style="background:#ea5c0b; border:none; cursor:pointer;">
+                    Save Template Settings
+                </button>
+                <span class="wa-settings-save-status" id="wa_settings_status_<?php echo esc_attr($hook_type); ?>" style="margin-left:10px;"></span>
             </p>
         </div>
 
@@ -136,3 +142,58 @@ $buttons = json_decode($buttons_json, true) ?: [];
         </div>
     </div>
 </div>
+
+<script>
+jQuery(function($) {
+    var hookType = '<?php echo esc_js($hook_type); ?>';
+    var prefix   = 'wa_template_' + hookType + '_';
+
+    $('#wa_save_settings_template_' + hookType).on('click', function() {
+        var $btn    = $(this);
+        var $status = $('#wa_settings_status_' + hookType);
+
+        $btn.text('Saving...').prop('disabled', true);
+        $status.text('').css('color', '');
+
+        // Collect button rows
+        var buttons = [];
+        $('#wa-buttons-container-' + hookType + ' .wa-button-row').each(function() {
+            var selects = $(this).find('select');
+            var inputs  = $(this).find('input[type="text"]');
+            buttons.push({
+                type: selects.eq(0).val() || 'URL',
+                text: inputs.eq(0).val() || '',
+                url:  inputs.eq(1).val() || ''
+            });
+        });
+
+        var postData = {
+            action:         'wa_save_builder_template',
+            hook:           hookType,
+            template_name:  $('input[name="' + prefix + 'template_name"]').val(),
+            category:       $('select[name="' + prefix + 'category"]').val(),
+            language:       $('input[name="' + prefix + 'language"]').val(),
+            header_type:    $('select[name="' + prefix + 'header_type"]').val(),
+            header_text:    $('textarea[name="' + prefix + 'header_text"]').val(),
+            body_template:  $('textarea[name="' + prefix + 'body_template"]').val(),
+            footer_template:$('textarea[name="' + prefix + 'footer_template"]').val(),
+            enable_buttons: 'yes',
+            buttons:        buttons
+        };
+
+        $.post(ajaxurl, postData, function(resp) {
+            if (resp.success) {
+                var icon = resp.data.api_synced ? '✅' : '⚠️';
+                $status.text(icon + ' ' + (resp.data.message || 'Saved!')).css('color', resp.data.api_synced ? '#1a7f64' : '#b28900');
+            } else {
+                $status.text('❌ ' + (resp.data || 'Error')).css('color', '#c53030');
+            }
+        }).fail(function() {
+            $status.text('❌ Server error').css('color', '#c53030');
+        }).always(function() {
+            $btn.text('Save Template Settings').prop('disabled', false);
+        });
+    });
+});
+</script>
+
