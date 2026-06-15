@@ -206,9 +206,6 @@ $record_count = count( $templates );
                 <th scope="col" class="manage-column column-id <?php echo get_sort_class( 'entity_id', $orderby, $order ); ?>">
                     <a href="<?php echo esc_url( add_query_arg( array( 'orderby' => 'entity_id', 'order' => $order_next ), $base_url ) ); ?>"><span>ID</span><span class="sorting-indicator"></span></a>
                 </th>
-                <th scope="col" class="manage-column column-meta-id <?php echo get_sort_class( 'template_id', $orderby, $order ); ?>">
-                    <a href="<?php echo esc_url( add_query_arg( array( 'orderby' => 'template_id', 'order' => $order_next ), $base_url ) ); ?>"><span>Meta ID</span><span class="sorting-indicator"></span></a>
-                </th>
                 <th scope="col" class="manage-column column-title column-primary <?php echo get_sort_class( 'template_name', $orderby, $order ); ?>">
                     <a href="<?php echo esc_url( $sort_links['template_name'] ); ?>"><span>Template Name</span><span class="sorting-indicator"></span></a>
                 </th>
@@ -230,7 +227,6 @@ $record_count = count( $templates );
                 <th scope="col" class="manage-column column-last-synced <?php echo get_sort_class( 'last_synced_at', $orderby, $order ); ?>">
                     <a href="<?php echo esc_url( add_query_arg( array( 'orderby' => 'last_synced_at', 'order' => $order_next ), $base_url ) ); ?>"><span>Last Synced</span><span class="sorting-indicator"></span></a>
                 </th>
-                <th scope="col" class="manage-column column-action">Action</th>
             </tr>
         </thead>
         <tfoot>
@@ -239,9 +235,6 @@ $record_count = count( $templates );
                 <th scope="col" class="manage-column column-id <?php echo get_sort_class( 'entity_id', $orderby, $order ); ?>">
                     <a href="<?php echo esc_url( add_query_arg( array( 'orderby' => 'entity_id', 'order' => $order_next ), $base_url ) ); ?>"><span>ID</span><span class="sorting-indicator"></span></a>
                 </th>
-                <th scope="col" class="manage-column column-meta-id <?php echo get_sort_class( 'template_id', $orderby, $order ); ?>">
-                    <a href="<?php echo esc_url( add_query_arg( array( 'orderby' => 'template_id', 'order' => $order_next ), $base_url ) ); ?>"><span>Meta ID</span><span class="sorting-indicator"></span></a>
-                </th>
                 <th scope="col" class="manage-column column-title column-primary <?php echo get_sort_class( 'template_name', $orderby, $order ); ?>">
                     <a href="<?php echo esc_url( $sort_links['template_name'] ); ?>"><span>Template Name</span><span class="sorting-indicator"></span></a>
                 </th>
@@ -263,7 +256,6 @@ $record_count = count( $templates );
                 <th scope="col" class="manage-column column-last-synced <?php echo get_sort_class( 'last_synced_at', $orderby, $order ); ?>">
                     <a href="<?php echo esc_url( add_query_arg( array( 'orderby' => 'last_synced_at', 'order' => $order_next ), $base_url ) ); ?>"><span>Last Synced</span><span class="sorting-indicator"></span></a>
                 </th>
-                <th scope="col" class="manage-column column-action">Action</th>
             </tr>
         </tfoot>
         <tbody id="the-list">
@@ -272,7 +264,6 @@ $record_count = count( $templates );
                 <tr id="template-<?php echo esc_attr($tmp['entity_id'] ?? ''); ?>">
                     <th scope="row" class="check-column"><input type="checkbox" name="template_ids[]" value="<?php echo esc_attr($tmp['entity_id'] ?? ''); ?>"></th>
                     <td class="column-id" data-colname="ID"><?php echo esc_html($tmp['entity_id']); ?></td>
-                    <td class="column-meta-id" data-colname="Meta ID"><?php echo esc_html($tmp['template_id']); ?></td>
                     <td class="column-title column-primary" data-colname="Template Name">
                         <strong><a href="?page=wa-template-builder&id=<?php echo esc_attr($tmp['entity_id'] ?? ''); ?>"><?php echo esc_html($tmp['template_name']); ?></a></strong>
                         <div class="row-actions">
@@ -290,10 +281,7 @@ $record_count = count( $templates );
                         ?>
                     </td>
                     <td class="column-date" data-colname="Created At"><?php echo esc_html(date('M d, Y g:i a', strtotime($tmp['created_at']))); ?></td>
-                    <td class="column-last-synced" data-colname="Last Synced"><?php echo $tmp['last_synced_at'] ? esc_html(date('M d, Y g:i a', strtotime($tmp['last_synced_at']))) : 'Never'; ?></td>
-                    <td class="column-action" data-colname="Action">
-                        <a href="?page=wa-template-builder&hook=<?php echo esc_attr($tmp['entity_id'] ?? ''); ?>">Select ▼</a>
-                    </td>
+                    <td class="column-last-synced" data-colname="Last Synced"><?php echo ! empty( $tmp['last_synced_at'] ) ? esc_html( date( 'M d, Y g:i a', strtotime( $tmp['last_synced_at'] ) ) ) : 'Never'; ?></td>
                 </tr>
                 <?php endforeach; ?>
             <?php else : ?>

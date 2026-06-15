@@ -367,7 +367,7 @@ wp_enqueue_script( 'wa-template-builder-js', plugins_url( '../assets/template-bu
                 </div>
                 <div class="wa-chat-header">
                     <div class="wa-chat-avatar">WA</div>
-                    <div class="wa-chat-name">Magento Store</div>
+                    <div class="wa-chat-name">WooCommerce Store</div>
                 </div>
                 <div class="wa-chat-body">
                     <div class="wa-message-bubble">
