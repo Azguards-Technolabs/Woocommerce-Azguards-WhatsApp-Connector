@@ -69,6 +69,10 @@ jQuery(document).ready(function ($) {
         var type = $(this).val();
         if (type === 'CAROUSEL') {
             $('.wa-standard-row').hide();
+            // Carousel still needs a root Body and potentially Footer
+            $('#wa_message_body').closest('tr').show();
+            $('#wa_footer_text').closest('tr').show();
+
             $('#wa_carousel_row').show();
             // Load from RAW_CAROUSEL_CARDS if empty
             if ($('.wa-carousel-card').length === 0) {
