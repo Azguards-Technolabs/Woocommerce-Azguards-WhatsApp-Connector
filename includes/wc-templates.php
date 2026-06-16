@@ -721,21 +721,12 @@ if ( ! function_exists( 'wa_build_template_api_payload' ) ) :
         $safe_name = strtolower( preg_replace( '/[^a-z0-9_]/i', '_', $name ) );
         $safe_name = preg_replace( '/_+/', '_', $safe_name );
 
-        // Determine API type field (mirrors Magento MetaTemplatePayloadBuilder)
-        $type = strtoupper( $template_type );
-        if ( $type === 'CAROUSEL' ) {
-            $api_type = 'CAROUSEL';
-        } elseif ( in_array( strtoupper( $header_type ), [ 'IMAGE', 'VIDEO', 'DOCUMENT' ] ) ) {
-            $api_type = strtoupper( $header_type );
-        } else {
-            $api_type = 'TEXT';
-        }
-
         $payload = [
-            'name'       => $safe_name,
-            'category'   => strtoupper( $category ),
-            'language'   => $language,
-            'components' => [],
+            'name'             => $safe_name,
+            'category'         => [ 'name' => strtoupper( $category ) ],
+            'language'         => [ 'code' => $language ],
+            'parameter_format' => 'POSITIONAL',
+            'components'       => [],
         ];
 
         // --- 1. CAROUSEL Component (Special handling) ---
@@ -756,18 +747,19 @@ if ( ! function_exists( 'wa_build_template_api_payload' ) ) :
                 $card_entry = [
                     'components' => [
                         [
-                            'type'   => 'HEADER',
-                            'format' => $c_header_type,
+                            'componentType'   => 'HEADER',
+                            'componentFormat' => $c_header_type,
                         ],
                         [
-                            'type' => 'BODY',
-                            'text' => $card_body_result['text'],
+                            'componentType'   => 'BODY',
+                            'componentFormat' => 'TEXT',
+                            'componentData'   => $card_body_result['text'],
                         ],
                     ],
                 ];
 
                 if ( $c_header_handle ) {
-                    $card_entry['components'][0]['media'] = [ 'id' => $c_header_handle ];
+                    $card_entry['components'][0]['componentData'] = [ 'id' => $c_header_handle ];
                 }
 
                 $card_buttons = [];
@@ -786,8 +778,8 @@ if ( ! function_exists( 'wa_build_template_api_payload' ) ) :
 
                 if ( ! empty( $card_buttons ) ) {
                     $card_entry['components'][] = [
-                        'type'    => 'BUTTONS',
-                        'buttons' => $card_buttons,
+                        'componentType' => 'BUTTONS',
+                        'componentData' => $card_buttons,
                     ];
                 }
 
@@ -795,8 +787,8 @@ if ( ! function_exists( 'wa_build_template_api_payload' ) ) :
             }
 
             $payload['components'][] = [
-                'type'  => 'CAROUSEL',
-                'cards' => $cards,
+                'componentType' => 'CAROUSEL',
+                'componentData' => $cards,
             ];
         }
 
@@ -805,14 +797,14 @@ if ( ! function_exists( 'wa_build_template_api_payload' ) ) :
             $header_type_upper = strtoupper( $header_type );
             if ( $header_type_upper && $header_type_upper !== 'NONE' ) {
                 $header_comp = [
-                    'type'   => 'HEADER',
-                    'format' => $header_type_upper,
+                    'componentType'   => 'HEADER',
+                    'componentFormat' => $header_type_upper,
                 ];
                 if ( $header_type_upper === 'TEXT' && $header_text ) {
-                    $header_comp['text'] = $header_text;
+                    $header_comp['componentData'] = $header_text;
                 } elseif ( in_array( $header_type_upper, [ 'IMAGE', 'VIDEO', 'DOCUMENT' ] ) ) {
                     if ( $header_handle ) {
-                        $header_comp['media'] = [ 'id' => $header_handle ];
+                        $header_comp['componentData'] = [ 'id' => $header_handle ];
                     }
                 }
                 $payload['components'][] = $header_comp;
@@ -826,16 +818,17 @@ if ( ! function_exists( 'wa_build_template_api_payload' ) ) :
             $body_result = $process_vars( $body_clean );
 
             $payload['components'][] = [
-                'type' => 'BODY',
-                'text' => $body_result['text'],
+                'componentType'   => 'BODY',
+                'componentFormat' => 'TEXT',
+                'componentData'   => $body_result['text'],
             ];
         }
 
         // --- 4. FOOTER Component (Standard and Carousel root) ---
         if ( $footer ) {
             $payload['components'][] = [
-                'type' => 'FOOTER',
-                'text' => $footer,
+                'componentType' => 'FOOTER',
+                'componentData' => $footer,
             ];
         }
 
@@ -870,8 +863,8 @@ if ( ! function_exists( 'wa_build_template_api_payload' ) ) :
             }
             if ( ! empty( $button_list ) ) {
                 $payload['components'][] = [
-                    'type'    => 'BUTTONS',
-                    'buttons' => $button_list,
+                    'componentType' => 'BUTTONS',
+                    'componentData' => $button_list,
                 ];
             }
         }
