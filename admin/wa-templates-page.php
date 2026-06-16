@@ -30,15 +30,17 @@ $page_title = isset($titles[$hook_type]) ? $titles[$hook_type] : 'Template Build
 $edit_id = isset($_GET['id']) ? intval($_GET['id']) : 0;
 
 $saved_template_name = '';
-$saved_header_type = 'TEXT';
-$saved_header_text = '';
+$saved_category      = 'MARKETING';
+$saved_language      = 'en_US';
+$saved_header_type   = 'TEXT';
+$saved_header_text   = '';
 $saved_body_template = '';
-$saved_footer = '';
+$saved_footer        = '';
 $saved_enable_buttons = 'no';
-$saved_buttons_json = '[]';
-$saved_header_handle = '';
-$saved_header_url = '';
-$saved_template_type = 'STANDARD';
+$saved_buttons_json   = '[]';
+$saved_header_handle  = '';
+$saved_header_url     = '';
+$saved_template_type  = 'STANDARD';
 $saved_carousel_cards_json = '[]';
 
 if ( $edit_id > 0 ) {
@@ -47,6 +49,8 @@ if ( $edit_id > 0 ) {
     $tpl = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table_name WHERE entity_id = %d", $edit_id), ARRAY_A);
     if ( $tpl ) {
         $saved_template_name = $tpl['template_name'];
+        $saved_category      = $tpl['category'] ?: 'MARKETING';
+        $saved_language      = $tpl['language'] ?: 'en_US';
         // Fix for when template_type inadvertently contains header_format due to old bug
         $saved_template_type = (isset($tpl['template_type']) && in_array($tpl['template_type'], ['STANDARD', 'CAROUSEL'])) ? $tpl['template_type'] : 'STANDARD';
         $saved_header_type = $tpl['header_format'] ?: 'TEXT';
@@ -68,12 +72,6 @@ if ( $edit_id > 0 ) {
         } else {
             $saved_header_handle = $tpl['media_handle'] ?? ''; // Fallback
         }
-
-        // Fix for header_text population if it's stored as plain string but might have been header_format
-        if ( empty($saved_header_text) && $saved_header_type === 'TEXT' ) {
-             // Maybe it was in header_format by mistake in some rows?
-             // Unlikely with new schema but let's be safe.
-        }
     }
 } else {
     // If no edit ID, check if page explicitly requests a WooCommerce hook flow
@@ -82,15 +80,17 @@ if ( $edit_id > 0 ) {
         $saved_template_type = 'STANDARD';
     } else {
         $saved_template_name = get_option( "wa_template_{$hook_type}_template_name", '' );
-        $saved_header_type = get_option( "wa_template_{$hook_type}_header_type", 'TEXT' );
-        $saved_header_text = get_option( "wa_template_{$hook_type}_header_text", '' );
+        $saved_category      = get_option( "wa_template_{$hook_type}_category", 'MARKETING' );
+        $saved_language      = get_option( "wa_template_{$hook_type}_language", 'en_US' );
+        $saved_header_type   = get_option( "wa_template_{$hook_type}_header_type", 'TEXT' );
+        $saved_header_text   = get_option( "wa_template_{$hook_type}_header_text", '' );
         $saved_body_template = get_option( "wa_template_{$hook_type}_body_template", "" );
-        $saved_footer = get_option( "wa_template_{$hook_type}_footer_template", "" );
+        $saved_footer        = get_option( "wa_template_{$hook_type}_footer_template", "" );
         $saved_enable_buttons = get_option( "wa_template_{$hook_type}_enable_buttons", 'no' );
-        $saved_buttons_json = get_option( "wa_template_{$hook_type}_buttons_json", '[]' );
-        $saved_header_handle = get_option( "wa_template_{$hook_type}_header_handle", '' );
-        $saved_header_url = get_option( "wa_template_{$hook_type}_header_url", '' );
-        $saved_template_type = get_option( "wa_template_{$hook_type}_template_type", 'STANDARD' );
+        $saved_buttons_json   = get_option( "wa_template_{$hook_type}_buttons_json", '[]' );
+        $saved_header_handle  = get_option( "wa_template_{$hook_type}_header_handle", '' );
+        $saved_header_url     = get_option( "wa_template_{$hook_type}_header_url", '' );
+        $saved_template_type  = get_option( "wa_template_{$hook_type}_template_type", 'STANDARD' );
         $saved_carousel_cards_json = get_option( "wa_template_{$hook_type}_carousel_cards_json", '[]' );
     }
 }
@@ -131,7 +131,14 @@ wp_enqueue_script( 'wa-template-builder-js', plugins_url( '../assets/template-bu
             <table class="form-table">
                 <tbody>
                     <tr>
-                        <th scope="row"><label for="wa_template_type">Template Type</label></th>
+                        <th scope="row"><label for="wa_template_name">Template Name <span style="color:red;">*</span></label></th>
+                        <td>
+                            <input type="text" id="wa_template_name" class="regular-text" value="<?php echo esc_attr($saved_template_name ?? 'My Template'); ?>" />
+                            <p class="description">The template name must be unique and follow specific formatting rules (lowercase, numbers, underscores).</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="wa_template_type">Template Type <span style="color:red;">*</span></label></th>
                         <td>
                             <select id="wa_template_type" class="regular-text">
                                 <?php
@@ -152,10 +159,98 @@ wp_enqueue_script( 'wa-template-builder-js', plugins_url( '../assets/template-bu
                             </select>
                         </td>
                     </tr>
+                    <tr id="wa_category_notice_row" style="display: none;">
+                        <td colspan="2">
+                             <div style="background: #fff8e1; border-left: 4px solid #ffca28; padding: 10px; margin-bottom: 5px;">
+                                <strong>Category: Marketing (Auto-set for Media Templates)</strong>
+                             </div>
+                        </td>
+                    </tr>
                     <tr>
-                        <th scope="row"><label for="wa_template_name">Template Name</label></th>
+                        <th scope="row"><label for="wa_template_category">Template Category <span style="color:red;">*</span></label></th>
                         <td>
-                            <input type="text" id="wa_template_name" class="regular-text" value="<?php echo esc_attr($saved_template_name ?? 'My Template'); ?>" />
+                            <select id="wa_template_category" class="regular-text">
+                                <option value="MARKETING" <?php selected($saved_category, 'MARKETING'); ?>>Marketing</option>
+                                <option value="UTILITY" <?php selected($saved_category, 'UTILITY'); ?>>Utility</option>
+                                <option value="AUTHENTICATION" <?php selected($saved_category, 'AUTHENTICATION'); ?>>Authentication</option>
+                            </select>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="wa_language_code">Language Code <span style="color:red;">*</span></label></th>
+                        <td>
+                            <select id="wa_language_code" class="regular-text">
+                                <option value="">-- Select Language --</option>
+                                <option value="en" <?php selected($saved_language, 'en'); ?>>English</option>
+                                <option value="en_US" <?php selected($saved_language, 'en_US'); ?>>English (US)</option>
+                                <option value="en_GB" <?php selected($saved_language, 'en_GB'); ?>>English (UK)</option>
+                                <option value="af" <?php selected($saved_language, 'af'); ?>>Afrikaans</option>
+                                <option value="sq" <?php selected($saved_language, 'sq'); ?>>Albanian</option>
+                                <option value="ar" <?php selected($saved_language, 'ar'); ?>>Arabic</option>
+                                <option value="az" <?php selected($saved_language, 'az'); ?>>Azerbaijani</option>
+                                <option value="bn" <?php selected($saved_language, 'bn'); ?>>Bengali</option>
+                                <option value="bg" <?php selected($saved_language, 'bg'); ?>>Bulgarian</option>
+                                <option value="ca" <?php selected($saved_language, 'ca'); ?>>Catalan</option>
+                                <option value="zh_CN" <?php selected($saved_language, 'zh_CN'); ?>>Chinese (CHN)</option>
+                                <option value="zh_HK" <?php selected($saved_language, 'zh_HK'); ?>>Chinese (HKG)</option>
+                                <option value="zh_TW" <?php selected($saved_language, 'zh_TW'); ?>>Chinese (TAI)</option>
+                                <option value="hr" <?php selected($saved_language, 'hr'); ?>>Croatian</option>
+                                <option value="cs" <?php selected($saved_language, 'cs'); ?>>Czech</option>
+                                <option value="da" <?php selected($saved_language, 'da'); ?>>Danish</option>
+                                <option value="nl" <?php selected($saved_language, 'nl'); ?>>Dutch</option>
+                                <option value="et" <?php selected($saved_language, 'et'); ?>>Estonian</option>
+                                <option value="fil" <?php selected($saved_language, 'fil'); ?>>Filipino</option>
+                                <option value="fi" <?php selected($saved_language, 'fi'); ?>>Finnish</option>
+                                <option value="fr" <?php selected($saved_language, 'fr'); ?>>French</option>
+                                <option value="de" <?php selected($saved_language, 'de'); ?>>German</option>
+                                <option value="el" <?php selected($saved_language, 'el'); ?>>Greek</option>
+                                <option value="gu" <?php selected($saved_language, 'gu'); ?>>Gujarati</option>
+                                <option value="he" <?php selected($saved_language, 'he'); ?>>Hebrew</option>
+                                <option value="hi" <?php selected($saved_language, 'hi'); ?>>Hindi</option>
+                                <option value="hu" <?php selected($saved_language, 'hu'); ?>>Hungarian</option>
+                                <option value="id" <?php selected($saved_language, 'id'); ?>>Indonesian</option>
+                                <option value="ga" <?php selected($saved_language, 'ga'); ?>>Irish</option>
+                                <option value="it" <?php selected($saved_language, 'it'); ?>>Italian</option>
+                                <option value="ja" <?php selected($saved_language, 'ja'); ?>>Japanese</option>
+                                <option value="kn" <?php selected($saved_language, 'kn'); ?>>Kannada</option>
+                                <option value="kk" <?php selected($saved_language, 'kk'); ?>>Kazakh</option>
+                                <option value="ko" <?php selected($saved_language, 'ko'); ?>>Korean</option>
+                                <option value="lo" <?php selected($saved_language, 'lo'); ?>>Lao</option>
+                                <option value="lv" <?php selected($saved_language, 'lv'); ?>>Latvian</option>
+                                <option value="lt" <?php selected($saved_language, 'lt'); ?>>Lithuanian</option>
+                                <option value="mk" <?php selected($saved_language, 'mk'); ?>>Macedonian</option>
+                                <option value="ms" <?php selected($saved_language, 'ms'); ?>>Malay</option>
+                                <option value="ml" <?php selected($saved_language, 'ml'); ?>>Malayalam</option>
+                                <option value="mr" <?php selected($saved_language, 'mr'); ?>>Marathi</option>
+                                <option value="nb" <?php selected($saved_language, 'nb'); ?>>Norwegian</option>
+                                <option value="fa" <?php selected($saved_language, 'fa'); ?>>Persian</option>
+                                <option value="pl" <?php selected($saved_language, 'pl'); ?>>Polish</option>
+                                <option value="pt_BR" <?php selected($saved_language, 'pt_BR'); ?>>Portuguese (BR)</option>
+                                <option value="pt_PT" <?php selected($saved_language, 'pt_PT'); ?>>Portuguese (PT)</option>
+                                <option value="pa" <?php selected($saved_language, 'pa'); ?>>Punjabi</option>
+                                <option value="ro" <?php selected($saved_language, 'ro'); ?>>Romanian</option>
+                                <option value="ru" <?php selected($saved_language, 'ru'); ?>>Russian</option>
+                                <option value="sr" <?php selected($saved_language, 'sr'); ?>>Serbian</option>
+                                <option value="sk" <?php selected($saved_language, 'sk'); ?>>Slovak</option>
+                                <option value="sl" <?php selected($saved_language, 'sl'); ?>>Slovenian</option>
+                                <option value="es" <?php selected($saved_language, 'es'); ?>>Spanish</option>
+                                <option value="sw" <?php selected($saved_language, 'sw'); ?>>Swahili</option>
+                                <option value="sv" <?php selected($saved_language, 'sv'); ?>>Swedish</option>
+                                <option value="ta" <?php selected($saved_language, 'ta'); ?>>Tamil</option>
+                                <option value="te" <?php selected($saved_language, 'te'); ?>>Telugu</option>
+                                <option value="th" <?php selected($saved_language, 'th'); ?>>Thai</option>
+                                <option value="tr" <?php selected($saved_language, 'tr'); ?>>Turkish</option>
+                                <option value="uk" <?php selected($saved_language, 'uk'); ?>>Ukrainian</option>
+                                <option value="ur" <?php selected($saved_language, 'ur'); ?>>Urdu</option>
+                                <option value="uz" <?php selected($saved_language, 'uz'); ?>>Uzbek</option>
+                                <option value="vi" <?php selected($saved_language, 'vi'); ?>>Vietnamese</option>
+                                <option value="zu" <?php selected($saved_language, 'zu'); ?>>Zulu</option>
+                            </select>
+                        </td>
+                    </tr>
+                    <tr class="wa-body-heading-row">
+                        <td colspan="2" style="padding-left: 0;">
+                            <h3 style="border-bottom: 1px solid #ccc; padding-bottom: 10px; margin-top: 20px;">BODY (Required)</h3>
                         </td>
                     </tr>
                     <tr class="wa-standard-row">
@@ -193,7 +288,7 @@ wp_enqueue_script( 'wa-template-builder-js', plugins_url( '../assets/template-bu
                     </tr>
                     <tr class="wa-standard-row">
                         <th>
-                            <label for="wa_message_body">Message Body</label>
+                            <label for="wa_message_body">Body Content <span style="color:red;">*</span></label>
                             <br>
                             <div class="wa-variable-inserter" style="position: relative; display: inline-block;">
                                 <button type="button" class="button" id="wa_insert_variable">Insert Variable {{}}</button>
@@ -341,12 +436,14 @@ wp_enqueue_script( 'wa-template-builder-js', plugins_url( '../assets/template-bu
                     </tr>
                     <tr id="wa_carousel_row" style="display:none;">
                         <td colspan="2" style="padding-left: 0;">
-                            <h3>Carousel Cards</h3>
+                            <h3 style="border-bottom: 1px solid #ccc; padding-bottom: 10px; margin-top: 20px;">Carousel Cards (For Carousel Template)</h3>
                             <div id="wa_carousel_cards_container">
                                 <!-- Cards will be dynamically inserted here -->
                             </div>
-                            <button type="button" class="button" id="wa_add_card_btn" style="margin-top: 10px;">Add Card</button>
-                            <span class="description" style="margin-left: 10px;">Maximum 10 cards allowed.</span>
+                            <div style="margin-top: 10px;">
+                                <button type="button" class="button" id="wa_add_card_btn">Add Card</button>
+                                <span class="description" style="margin-left: 10px;">Maximum 10 cards allowed.</span>
+                            </div>
                         </td>
                     </tr>
                 </tbody>
@@ -390,26 +487,35 @@ wp_enqueue_script( 'wa-template-builder-js', plugins_url( '../assets/template-bu
 
 <script type="text/template" id="wa-carousel-card-template">
     <div class="wa-carousel-card" style="border:1px solid #ccc; padding:15px; margin-bottom:15px; border-radius: 8px; background: #fafafa;">
-        <h4 style="margin-top:0;">Card <span class="card-num"></span></h4>
+        <h4 style="margin-top:0; border-bottom: 1px solid #eee; padding-bottom: 10px;">Card <span class="card-num"></span></h4>
         
-        <table class="form-table" style="margin-bottom: 10px;">
+        <table class="form-table" style="margin-bottom: 10px; border-collapse: collapse;">
             <tr>
-                <th scope="row" style="padding: 10px 10px 10px 0;"><label>Header Image / Video</label></th>
+                <th scope="row" style="padding: 10px 10px 10px 0; width: 200px;"><label>Body Content <span style="color:red;">*</span></label></th>
                 <td style="padding: 10px;">
-                    <select class="wa-card-header-type regular-text" style="vertical-align: top; margin-right: 10px;">
-                        <option value="IMAGE">Image</option>
-                        <option value="VIDEO">Video</option>
-                    </select>
-                    <input type="hidden" class="wa-card-header-handle" value="">
-                    <input type="hidden" class="wa-card-header-url" value="">
-                    <button type="button" class="button wa-card-upload-media">Choose Media</button>
-                    <span class="wa-card-media-status" style="margin-left: 10px; font-size: 12px;"></span>
+                    <textarea class="wa-card-body large-text" rows="3" maxlength="160" placeholder="Required. Card body text. Use {{1}}, {{2}} etc. for dynamic variables."></textarea>
+                    <p class="description" style="font-size: 11px;">Required. Card body text. Use {{1}}, {{2}} etc. for dynamic variables.</p>
                 </td>
             </tr>
             <tr>
-                <th scope="row" style="padding: 10px 10px 10px 0;"><label>Body</label></th>
+                <th scope="row" style="padding: 10px 10px 10px 0;"><label>Header Format</label></th>
                 <td style="padding: 10px;">
-                    <textarea class="wa-card-body large-text" rows="3" maxlength="160"></textarea>
+                    <select class="wa-card-header-type regular-text" style="vertical-align: top; margin-right: 10px;">
+                        <option value="TEXT">Text</option>
+                        <option value="IMAGE">Image</option>
+                        <option value="VIDEO">Video</option>
+                    </select>
+                    <p class="description" style="font-size: 11px;">Select the header media type for this card (IMAGE or VIDEO).</p>
+                </td>
+            </tr>
+            <tr class="wa-card-media-upload-row">
+                <th scope="row" style="padding: 10px 10px 10px 0;"><label>Header Media Upload</label></th>
+                <td style="padding: 10px;">
+                    <input type="hidden" class="wa-card-header-handle" value="">
+                    <input type="hidden" class="wa-card-header-url" value="">
+                    <button type="button" class="button wa-card-upload-media">Upload</button>
+                    <span class="wa-card-media-status" style="margin-left: 10px; font-size: 12px;"></span>
+                    <p class="description" style="font-size: 11px;">Upload an image or video for this card. Required if Header Format is IMAGE or VIDEO. Allowed: jpg, jpeg, png, mp4, 3gp.</p>
                 </td>
             </tr>
             <tr>
@@ -421,6 +527,8 @@ wp_enqueue_script( 'wa-template-builder-js', plugins_url( '../assets/template-bu
             </tr>
         </table>
         
-        <button type="button" class="button button-link-delete wa-remove-card" style="color: #d63638;">Remove Card</button>
+        <div style="text-align: right;">
+            <button type="button" class="button button-link-delete wa-remove-card" style="color: #d63638;">Remove Card</button>
+        </div>
     </div>
 </script>

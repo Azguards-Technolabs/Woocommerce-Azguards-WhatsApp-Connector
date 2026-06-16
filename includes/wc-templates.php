@@ -369,7 +369,7 @@ if ( ! function_exists( 'wa_save_builder_template_handler' ) ) :
         $entity_id       = intval( $_POST['entity_id'] ?? 0 );
         $template_name   = sanitize_text_field( $_POST['template_name'] ?? 'Unnamed' );
         $category        = sanitize_text_field( $_POST['category'] ?? 'UTILITY' );
-        $language        = get_locale(); // Enforce WP Store Language
+        $language        = sanitize_text_field( $_POST['language'] ?? get_locale() );
         $header_type     = strtoupper( sanitize_text_field( $_POST['header_type'] ?? 'TEXT' ) );
         $header_text     = sanitize_text_field( $_POST['header_text'] ?? '' );
         $header_handle   = sanitize_text_field( $_POST['header_handle'] ?? '' );
