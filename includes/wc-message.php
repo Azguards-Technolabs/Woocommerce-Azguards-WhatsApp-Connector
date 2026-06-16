@@ -73,16 +73,19 @@ class WA_Message {
         );
 
         if ( is_wp_error( $response ) ) {
+            error_log( "[WhatsApp] API Connection Error: " . $response->get_error_message() );
             return new WP_Error( 'api_error', __( 'Failed to call message API.', 'whatsapp-connector' ) );
         }
 
         $response_body = wp_remote_retrieve_body( $response );
+        $response_code = wp_remote_retrieve_response_code( $response );
 
         // Debug logging.
         error_log( '--------------------------Start ' . $flag . '--------------------------' );
-        error_log( print_r( $body, true ) );
-        error_log( wp_json_encode( $body ) );
-        error_log( print_r( json_decode( $response_body, true ), true ) );
+        error_log( "[WhatsApp] API URL: " . $api_url );
+        error_log( "[WhatsApp] Request Body: " . wp_json_encode( $body ) );
+        error_log( "[WhatsApp] Response Code: " . $response_code );
+        error_log( "[WhatsApp] Response Body: " . $response_body );
         error_log( '--------------------------End ' . $flag . '--------------------------' );
 
         return json_decode( $response_body, true );

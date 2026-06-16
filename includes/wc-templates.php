@@ -524,8 +524,15 @@ if ( ! function_exists( 'wa_save_builder_template_handler' ) ) :
             }
         }
 
-        if ( $api_template_id && ! $is_standalone ) {
-            update_option( "wa_template_{$hook}_assigned_id", $api_template_id );
+        if ( $api_template_id || ( $response_code === 409 && ! empty( $hook ) ) ) {
+            // If conflict or success, ensure we have an ID for mapping if not in response
+            if ( ! $api_template_id && $response_code === 409 ) {
+                $api_template_id = get_option( "wa_template_{$hook}_assigned_id" );
+            }
+
+            if ( ! $is_standalone ) {
+                update_option( "wa_template_{$hook}_assigned_id", $api_template_id );
+            }
 
             // Link to WooCommerce hook option so woocommerce-hooks.php can dispatch it
             $mapped_option_keys = [
@@ -770,147 +777,107 @@ if ( ! function_exists( 'wa_build_template_api_payload' ) ) :
         }
 
         $payload = [
-            'name'     => $safe_name,
-            'category' => strtoupper( $category ?: 'UTILITY' ),
-            'type'     => $type,
-            'language' => $language ?: 'en_US',
+            'name'             => $safe_name,
+            'category'         => [ 'name' => strtoupper( $category ?: 'UTILITY' ) ],
+            'language'         => [ 'code' => $language ?: 'en_US' ],
+            'parameter_format' => 'POSITIONAL',
+            'components'       => [],
         ];
 
-
-
         if ( $template_type !== 'CAROUSEL' ) {
-            // 1. HEADER (Root header only for non-carousel. Carousel headers are inside cards)
+            // 1. HEADER
             $h_format = strtoupper( $header_type ?: 'TEXT' );
             if ( $h_format === 'TEXT' && trim( $header_text ) !== '' ) {
-                $payload['header'] = [
-                    'type'   => 'HEADER',
-                    'format' => 'TEXT',
-                    'text'   => trim( $header_text ),
+                $payload['components'][] = [
+                    'componentType'   => 'HEADER',
+                    'componentFormat' => 'TEXT',
+                    'componentData'   => trim( $header_text ),
                 ];
             } elseif ( in_array( $h_format, [ 'IMAGE', 'VIDEO', 'DOCUMENT' ] ) ) {
-                $header_arr = [
-                    'type'   => 'HEADER',
-                    'format' => $h_format,
+                $comp = [
+                    'componentType'   => 'HEADER',
+                    'componentFormat' => $h_format,
                 ];
                 if ( trim( $header_handle ) !== '' ) {
-                    $header_arr['media'] = [ 'id' => trim( $header_handle ) ];
+                    $comp['componentData'] = [ 'id' => trim( $header_handle ) ];
                 }
-                $payload['header'] = $header_arr;
+                $payload['components'][] = $comp;
             }
 
-            // 4. BUTTONS (Root buttons only for non-carousel. Carousel buttons are inside cards)
+            // 2. BODY
+            if ( trim( $body ) !== '' ) {
+                $body_res = $process_vars( $body );
+                $payload['components'][] = [
+                    'componentType'   => 'BODY',
+                    'componentFormat' => 'TEXT',
+                    'componentData'   => $body_res['text'],
+                ];
+            }
+
+            // 3. FOOTER
+            if ( trim( $footer ) !== '' ) {
+                $payload['components'][] = [
+                    'componentType'   => 'FOOTER',
+                    'componentFormat' => 'TEXT',
+                    'componentData'   => trim( $footer ),
+                ];
+            }
+
+            // 4. BUTTONS
             if ( ! empty( $buttons ) ) {
                 $button_list = [];
                 foreach ( $buttons as $btn ) {
                     $btn_type = strtoupper( $btn['type'] ?? 'QUICK_REPLY' );
                     $btn_text = trim( $btn['text'] ?? '' );
-                    
                     if ( empty( $btn_text ) && $btn_type !== 'CATALOG' ) {
                         continue;
                     }
-                    
-                    $btn_entry = [ 'type' => $btn_type ];
-                    if ( ! empty( $btn_text ) ) {
-                        $btn_entry['text'] = $btn_text;
-                    }
-
+                    $btn_entry = [ 'type' => $btn_type, 'text' => $btn_text ];
                     if ( $btn_type === 'URL' ) {
-                        $url_val = trim( $btn['url'] ?? $btn['button_url'] ?? $btn['value'] ?? '' );
-                        if ( empty( $url_val ) ) {
-                            continue;
-                        }
+                        $url_val          = trim( $btn['url'] ?? $btn['button_url'] ?? $btn['value'] ?? '' );
                         $url_res          = $process_vars( $url_val, true );
                         $btn_entry['url'] = $url_res['text'];
-                        if ( ! empty( $url_res['params'] ) ) {
-                            $btn_entry['param'] = $url_res['params'];
-                        }
                     } elseif ( in_array( $btn_type, ['PHONE_NUMBER', 'PHONE'] ) ) {
-                        $btn_entry['type'] = 'PHONE_NUMBER';
-                        $phone = trim( $btn['phone_number'] ?? $btn['value'] ?? '' );
-                        if ( empty( $phone ) ) {
-                            continue;
-                        }
-                        $btn_entry['phone_number'] = $phone;
+                        $btn_entry['type']         = 'PHONE_NUMBER';
+                        $btn_entry['phone_number'] = trim( $btn['phone_number'] ?? $btn['value'] ?? '' );
                     }
-
                     $button_list[] = $btn_entry;
                 }
-
                 if ( ! empty( $button_list ) ) {
-                    $payload['buttons'] = $button_list;
+                    $payload['components'][] = [
+                        'componentType'   => 'BUTTONS',
+                        'componentFormat' => 'TEXT',
+                        'componentData'   => $button_list,
+                    ];
                 }
             }
-        }
-
-        // 2. BODY (Required for BOTH Standard and Carousel templates at root)
-        if ( trim( $body ) !== '' ) {
-            $body_res = $process_vars( $body );
-            if ( $body_res['text'] !== '' ) {
-                $payload['body'] = [
-                    'type'   => 'BODY',
-                    'format' => 'TEXT',
-                    'text'   => $body_res['text'],
-                ];
-                if ( ! empty( $body_res['params'] ) ) {
-                    $payload['body']['param'] = $body_res['params'];
-                }
-            }
-        }
-
-        // 3. FOOTER (Disabled for Carousel based on user request)
-        if ( $template_type !== 'CAROUSEL' && trim( $footer ) !== '' ) {
-            $payload['footer'] = [
-                'type' => 'FOOTER',
-                'text' => trim( $footer ),
-            ];
-        }
-
-        if ( $template_type === 'CAROUSEL' ) {
-            // === CAROUSEL PAYLOAD ===
-            // Backend DTO key is `carousel` (NOT `cards`).
-            // See: CreateTemplateDTO.ts line 55 — carousel: z.array(z.object({header, body, buttons}))
-            // The backend maps dto.carousel -> CAROUSEL component -> cleanComponentsForMeta -> Meta API
-            $carousel   = [];
-            $cards_data = json_decode( $carousel_cards_json, true );
-            if ( ! is_array( $cards_data ) ) {
-                $cards_data = [];
-            }
-
+        } else {
+            // === CAROUSEL ===
+            $cards_data = json_decode( $carousel_cards_json, true ) ?: [];
+            $cards = [];
             foreach ( $cards_data as $card ) {
-                $card_entry = [];
-
+                $card_components = [];
                 // Card HEADER
                 $c_header_type   = strtoupper( $card['header_type'] ?? 'IMAGE' );
                 $c_header_handle = trim( $card['header_handle'] ?? '' );
                 if ( in_array( $c_header_type, [ 'IMAGE', 'VIDEO' ] ) ) {
-                    $card_header = [
-                        'type'   => 'HEADER',
-                        'format' => $c_header_type,
+                    $card_components[] = [
+                        'componentType'   => 'HEADER',
+                        'componentFormat' => $c_header_type,
+                        'componentData'   => [ 'id' => $c_header_handle ],
                     ];
-                    if ( $c_header_handle !== '' ) {
-                        // The backend uses documentId or media.id to fetch the header handle
-                        $card_header['documentId'] = $c_header_handle;
-                        $card_header['media']      = [ 'id' => $c_header_handle ];
-                    }
-                    $card_entry['header'] = $card_header;
                 }
-
-                // Card BODY — DTO: { type, text, example? }
+                // Card BODY
                 $card_body_text = trim( $card['body'] ?? '' );
                 if ( $card_body_text !== '' ) {
-                    $card_body_res = $process_vars( $card_body_text );
-                    $card_body_arr = [
-                        'type' => 'BODY',
-                        'text' => $card_body_res['text'],
+                    $card_body_res     = $process_vars( $card_body_text );
+                    $card_components[] = [
+                        'componentType'   => 'BODY',
+                        'componentFormat' => 'TEXT',
+                        'componentData'   => $card_body_res['text'],
                     ];
-                    if ( ! empty( $card_body_res['params'] ) ) {
-                        // Backend reads body.param for positional params
-                        $card_body_arr['param'] = $card_body_res['params'];
-                    }
-                    $card_entry['body'] = $card_body_arr;
                 }
-
-                // Card BUTTONS — DTO: ButtonSchema array
+                // Card BUTTONS
                 $card_buttons = [];
                 foreach ( $card['buttons'] ?? [] as $btn ) {
                     $btn_type = strtoupper( $btn['type'] ?? 'QUICK_REPLY' );
@@ -920,34 +887,41 @@ if ( ! function_exists( 'wa_build_template_api_payload' ) ) :
                     }
                     $btn_entry = [ 'type' => $btn_type, 'text' => $btn_text ];
                     if ( $btn_type === 'URL' ) {
-                        $url_val = trim( $btn['button_url'] ?? $btn['url'] ?? '' );
-                        if ( ! empty( $url_val ) ) {
-                            $url_res          = $process_vars( $url_val, true );
-                            $btn_entry['url'] = $url_res['text'];
-                            if ( ! empty( $url_res['params'] ) ) {
-                                $btn_entry['example'] = $url_res['params'];
-                            }
-                        }
+                        $url_val          = trim( $btn['button_url'] ?? $btn['url'] ?? '' );
+                        $url_res          = $process_vars( $url_val, true );
+                        $btn_entry['url'] = $url_res['text'];
                     } elseif ( in_array( $btn_type, [ 'PHONE_NUMBER', 'PHONE' ] ) ) {
                         $btn_entry['type']         = 'PHONE_NUMBER';
                         $btn_entry['phone_number'] = trim( $btn['phone_number'] ?? $btn['value'] ?? '' );
                     }
                     $card_buttons[] = $btn_entry;
                 }
-
                 if ( ! empty( $card_buttons ) ) {
-                    $card_entry['buttons'] = $card_buttons;
+                    $card_components[] = [
+                        'componentType'   => 'BUTTONS',
+                        'componentFormat' => 'TEXT',
+                        'componentData'   => $card_buttons,
+                    ];
                 }
-
-                if ( ! empty( $card_entry ) ) {
-                    $carousel[] = $card_entry;
-                }
+                $cards[] = [ 'components' => $card_components ];
             }
 
-            if ( ! empty( $carousel ) ) {
-                // Use `carousel` key — matches DTO field name 
-                $payload['carousel'] = $carousel;
+            // Root components for Carousel
+            // 1. Root BODY
+            if ( trim( $body ) !== '' ) {
+                $body_res = $process_vars( $body );
+                $payload['components'][] = [
+                    'componentType'   => 'BODY',
+                    'componentFormat' => 'TEXT',
+                    'componentData'   => $body_res['text'],
+                ];
             }
+            // 2. Root CAROUSEL
+            $payload['components'][] = [
+                'componentType'   => 'CAROUSEL',
+                'componentFormat' => 'TEXT',
+                'componentData'   => $cards,
+            ];
         }
 
         // Convert varMap to the format expected by wa_process_template_variables
