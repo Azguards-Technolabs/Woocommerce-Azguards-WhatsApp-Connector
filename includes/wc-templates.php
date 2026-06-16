@@ -677,15 +677,19 @@ endif;
 if ( ! function_exists( 'wa_build_template_api_payload' ) ) :
     function wa_build_template_api_payload( $name, $category, $language, $header_type, $header_text, $body, $footer, $buttons = [], $header_handle = '', $header_url = '', $template_type = 'STANDARD', $carousel_cards_json = '[]' ) {
 
-        // --- Helper: convert {{var_name}} → {{1}}, {{2}}, ... and collect param names ---
-        $process_vars = function( string $text, bool $is_url = false ) use ( &$counter_ref ) {
+        $shared_counter = 0;
+        $shared_var_map = [];
+
+        /**
+         * Helper: convert {{var_name}} → {{1}}, {{2}}, ... and collect param names.
+         * Uses shared state by reference to maintain sequence across all components.
+         */
+        $process_vars = function( string $text, bool $is_url = false ) use ( &$shared_counter, &$shared_var_map ) {
             $params  = [];
-            $varMap  = [];
-            $counter = 0;
 
             $transformed = preg_replace_callback(
                 '/\{\{\s*(?:var\s+)?(.*?)\s*\}\}/',
-                function ( $m ) use ( &$params, &$varMap, &$counter, $is_url ) {
+                function ( $m ) use ( &$params, &$shared_var_map, &$shared_counter, $is_url ) {
                     $original = trim( $m[1] );
                     $prop     = $original;
                     if ( strpos( $prop, '.' ) !== false ) {
@@ -695,20 +699,13 @@ if ( ! function_exists( 'wa_build_template_api_payload' ) ) :
                     $prop     = str_replace( '()', '', $prop );
                     $clean    = preg_replace( '/[^a-zA-Z0-9_]/', '', $prop ) ?: 'var';
 
-                    if ( $is_url ) {
-                        if ( ! isset( $varMap[ $clean ] ) ) {
-                            $varMap[ $clean ] = $clean;
-                            $params[]         = $clean;
-                        }
-                        return '{{' . $varMap[ $clean ] . '}}';
+                    if ( ! isset( $shared_var_map[ $clean ] ) ) {
+                        $shared_counter++;
+                        $shared_var_map[ $clean ] = $shared_counter;
                     }
 
-                    if ( ! isset( $varMap[ $clean ] ) ) {
-                        $counter++;
-                        $varMap[ $clean ] = $counter;
-                        $params[]         = $clean;
-                    }
-                    return '{{' . $varMap[ $clean ] . '}}';
+                    $params[] = $clean;
+                    return '{{' . $shared_var_map[ $clean ] . '}}';
                 },
                 $text
             );
@@ -720,22 +717,12 @@ if ( ! function_exists( 'wa_build_template_api_payload' ) ) :
         $safe_name = strtolower( preg_replace( '/[^a-z0-9_]/i', '_', $name ) );
         $safe_name = preg_replace( '/_+/', '_', $safe_name );
 
-        // Determine API type field (mirrors Magento MetaTemplatePayloadBuilder)
-        $type = strtoupper( $template_type );
-        if ( $type === 'CAROUSEL' ) {
-            $api_type = 'CAROUSEL';
-        } elseif ( in_array( strtoupper( $header_type ), [ 'IMAGE', 'VIDEO', 'DOCUMENT' ] ) ) {
-            $api_type = strtoupper( $header_type );
-        } else {
-            $api_type = 'TEXT';
-        }
-
         $payload = [
-            'name'       => $safe_name,
-            'category'   => strtoupper( $category ),
-            'type'       => $api_type,
-            'language'   => $language,
-            'components' => [],
+            'name'             => $safe_name,
+            'category'         => [ 'name' => strtoupper( $category ) ],
+            'language'         => [ 'code' => $language ],
+            'parameter_format' => 'POSITIONAL',
+            'components'       => [],
         ];
 
         // --- 1. CAROUSEL Component (Special handling) ---
@@ -756,20 +743,20 @@ if ( ! function_exists( 'wa_build_template_api_payload' ) ) :
                 $card_entry = [
                     'components' => [
                         [
-                            'type'   => 'HEADER',
-                            'format' => $c_header_type,
+                            'componentType'   => 'HEADER',
+                            'componentFormat' => $c_header_type,
                         ],
                         [
-                            'type'   => 'BODY',
-                            'format' => 'TEXT',
-                            'text'   => $card_body_result['text'],
-                            'param'  => $card_body_result['params'] ?: null,
+                            'componentType'   => 'BODY',
+                            'componentFormat' => 'TEXT',
+                            'componentData'   => $card_body_result['text'],
+                            'param'           => $card_body_result['params'] ?: null,
                         ],
                     ],
                 ];
 
                 if ( $c_header_handle ) {
-                    $card_entry['components'][0]['media'] = [ 'id' => $c_header_handle ];
+                    $card_entry['components'][0]['componentData'] = [ 'id' => $c_header_handle ];
                 }
 
                 $card_buttons = [];
@@ -789,8 +776,8 @@ if ( ! function_exists( 'wa_build_template_api_payload' ) ) :
 
                 if ( ! empty( $card_buttons ) ) {
                     $card_entry['components'][] = [
-                        'type'    => 'BUTTONS',
-                        'buttons' => $card_buttons,
+                        'componentType' => 'BUTTONS',
+                        'componentData' => $card_buttons,
                     ];
                 }
 
@@ -798,8 +785,8 @@ if ( ! function_exists( 'wa_build_template_api_payload' ) ) :
             }
 
             $payload['components'][] = [
-                'type'  => 'CAROUSEL',
-                'cards' => $cards,
+                'componentType' => 'CAROUSEL',
+                'componentData' => $cards,
             ];
         }
 
@@ -808,14 +795,16 @@ if ( ! function_exists( 'wa_build_template_api_payload' ) ) :
             $header_type_upper = strtoupper( $header_type );
             if ( $header_type_upper && $header_type_upper !== 'NONE' ) {
                 $header_comp = [
-                    'type'   => 'HEADER',
-                    'format' => $header_type_upper,
+                    'componentType'   => 'HEADER',
+                    'componentFormat' => $header_type_upper,
                 ];
                 if ( $header_type_upper === 'TEXT' && $header_text ) {
-                    $header_comp['text'] = $header_text;
+                    $header_result = $process_vars( $header_text );
+                    $header_comp['componentData'] = $header_result['text'];
+                    $header_comp['param']         = $header_result['params'] ?: null;
                 } elseif ( in_array( $header_type_upper, [ 'IMAGE', 'VIDEO', 'DOCUMENT' ] ) ) {
                     if ( $header_handle ) {
-                        $header_comp['media'] = [ 'id' => $header_handle ];
+                        $header_comp['componentData'] = [ 'id' => $header_handle ];
                     }
                 }
                 $payload['components'][] = $header_comp;
@@ -829,18 +818,18 @@ if ( ! function_exists( 'wa_build_template_api_payload' ) ) :
             $body_result = $process_vars( $body_clean );
 
             $payload['components'][] = [
-                'type'   => 'BODY',
-                'format' => 'TEXT',
-                'text'   => $body_result['text'],
-                'param'  => $body_result['params'] ?: null,
+                'componentType'   => 'BODY',
+                'componentFormat' => 'TEXT',
+                'componentData'   => $body_result['text'],
+                'param'           => $body_result['params'] ?: null,
             ];
         }
 
         // --- 4. FOOTER Component (Standard and Carousel root) ---
         if ( $footer ) {
             $payload['components'][] = [
-                'type' => 'FOOTER',
-                'text' => $footer,
+                'componentType' => 'FOOTER',
+                'componentData' => $footer,
             ];
         }
 
@@ -876,8 +865,8 @@ if ( ! function_exists( 'wa_build_template_api_payload' ) ) :
             }
             if ( ! empty( $button_list ) ) {
                 $payload['components'][] = [
-                    'type'    => 'BUTTONS',
-                    'buttons' => $button_list,
+                    'componentType' => 'BUTTONS',
+                    'componentData' => $button_list,
                 ];
             }
         }
