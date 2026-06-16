@@ -67,12 +67,20 @@ jQuery(document).ready(function ($) {
 
     $('#wa_template_type').on('change', function () {
         var type = $(this).val();
+
+        // Auto-set Marketing for Media Templates
+        if (['IMAGE', 'VIDEO', 'DOCUMENT'].includes(type)) {
+            $('#wa_template_category').val('MARKETING');
+            $('#wa_category_notice_row').show();
+        } else {
+            $('#wa_category_notice_row').hide();
+        }
+
         if (type === 'CAROUSEL') {
             $('.wa-standard-row').hide();
             // Carousel still needs a root Body and potentially Footer
             $('#wa_message_body').closest('tr').show();
             $('#wa_footer_text').closest('tr').show();
-
             $('#wa_carousel_row').show();
             // Load from RAW_CAROUSEL_CARDS if empty
             if ($('.wa-carousel-card').length === 0) {
@@ -216,8 +224,17 @@ jQuery(document).ready(function ($) {
         var $card = $(tmpl);
         $card.find('.card-num').text(numCards + 1);
 
+        // Initial visibility for upload row
+        $card.find('.wa-card-header-type').on('change', function() {
+            if ($(this).val() === 'TEXT') {
+                $card.find('.wa-card-media-upload-row').hide();
+            } else {
+                $card.find('.wa-card-media-upload-row').show();
+            }
+        }).trigger('change');
+
         if (data) {
-            $card.find('.wa-card-header-type').val(data.header_type || 'IMAGE');
+            $card.find('.wa-card-header-type').val(data.header_type || 'IMAGE').trigger('change');
             $card.find('.wa-card-header-handle').val(data.header_handle || '');
             $card.find('.wa-card-header-url').val(data.header_image || '');
             if (data.header_handle || data.header_image) {
@@ -386,6 +403,8 @@ jQuery(document).ready(function ($) {
             hook: $('#wa_current_hook').val() || 'marketing',
             template_name: $('#wa_template_name').val() || 'Unnamed',
             template_type: $('#wa_template_type').val() || 'STANDARD',
+            category: $('#wa_template_category').val() || 'MARKETING',
+            language: $('#wa_language_code').val() || 'en_US',
             header_type: $('#wa_header_type').val(),
             header_text: $('#wa_header_text').val(),
             header_handle: $('#wa_header_media_handle').val(),
