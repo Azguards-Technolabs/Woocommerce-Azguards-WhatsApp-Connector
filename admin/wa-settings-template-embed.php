@@ -22,6 +22,22 @@ $footer_template = get_option("wa_template_{$hook_type}_footer_template", $defau
 $buttons_json    = get_option("wa_template_{$hook_type}_buttons_json", $defaults['buttons_json'] ?? '[]');
 
 $buttons = json_decode($buttons_json, true) ?: [];
+
+// --- Dynamic Status from DB ---
+global $wpdb;
+$_tbl_tmpl   = $wpdb->prefix . 'azguards_whatsapp_templates';
+$_tmpl_row   = ! empty( $template_name )
+    ? $wpdb->get_row( $wpdb->prepare( "SELECT status FROM {$_tbl_tmpl} WHERE template_name = %s ORDER BY entity_id DESC LIMIT 1", $template_name ) )
+    : null;
+$_tmpl_status = $_tmpl_row ? strtoupper( $_tmpl_row->status ) : 'NOT CREATED';
+$_status_colors = [
+    'APPROVED'    => '#1a7f64',
+    'PENDING'     => '#b28900',
+    'REJECTED'    => '#c53030',
+    'LOCAL'       => '#666',
+    'NOT CREATED' => '#aaa',
+];
+$_status_color = $_status_colors[ $_tmpl_status ] ?? '#666';
 ?>
 
 <div class="wa-template-wrap" style="padding:0; margin:0;" data-hook="<?php echo esc_attr($hook_type); ?>">
@@ -33,7 +49,7 @@ $buttons = json_decode($buttons_json, true) ?: [];
         <div class="wa-builder-form" style="flex:1;">
             <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
                 <label><strong>Template Builder</strong></label>
-                <span style="color:green; font-size:11px;">Meta Status: approved</span>
+                <span style="color:<?php echo esc_attr($_status_color); ?>; font-size:11px; font-weight:600;">Meta Status: <?php echo esc_html($_tmpl_status); ?></span>
             </div>
 
             <div class="wa-form-row" style="margin-bottom:15px;">

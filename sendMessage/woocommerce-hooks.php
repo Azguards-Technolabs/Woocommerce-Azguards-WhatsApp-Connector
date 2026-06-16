@@ -8,7 +8,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  * Hook: Order Created
  * Fires when a new order is created.
  */
-add_action( 'woocommerce_thankyou', 'wa_trigger_order_created', 10, 1 );
+add_action( 'woocommerce_checkout_order_processed', 'wa_trigger_order_created', 10, 1 );
 function wa_trigger_order_created( $order_id ) {
     wa_dispatch_event_template( $order_id, 'wa_enable_order_created', 'wa_order_creation_template', 'wa_order_creation_table_data', 'Order Created' );
 }
@@ -58,15 +58,27 @@ function wa_dispatch_event_template( $order_id, $enable_key, $template_key, $var
         return;
     }
 
-    // Check if this specific event is enabled
-    if ( get_option( $enable_key, 'yes' ) !== 'yes' ) {
-        error_log( "[WhatsApp] Event '{$log_context}' is disabled in settings. Skipping." );
-        return;
-    }
-
     $order = wc_get_order( $order_id );
     if ( ! $order ) {
         error_log( "[WhatsApp] Order #{$order_id} not found for event '{$log_context}'. Skipping." );
+        return;
+    }
+
+    // Sync Customer if not already synced and the customer has an account
+    if ( $log_context === 'Order Created' && $order->get_user_id() > 0 ) {
+        $user_id = $order->get_user_id();
+        $is_synced = get_user_meta( $user_id, 'wa_whatsapp_synced', true );
+        if ( ! $is_synced ) {
+            if ( ! class_exists( 'WA_Contact' ) ) {
+                require_once plugin_dir_path( dirname( __FILE__ ) ) . 'includes/wc-contact.php';
+            }
+            WA_Contact::sync_customer( $user_id );
+        }
+    }
+
+    // Check if this specific event is enabled
+    if ( get_option( $enable_key, 'yes' ) !== 'yes' ) {
+        error_log( "[WhatsApp] Event '{$log_context}' is disabled in settings. Skipping." );
         return;
     }
 
