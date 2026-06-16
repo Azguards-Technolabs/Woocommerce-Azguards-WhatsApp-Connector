@@ -24,7 +24,7 @@ jQuery(function ($) {
                 }
                 table.empty();
                 let newData = [];
-                if (response.data.variables.length) { 
+                if (response.data.variables.length) {
                     response.data.variables.forEach((row, i) => {
                         let tr = `<tr>
                             <td>${row.index}</td>
@@ -42,15 +42,15 @@ jQuery(function ($) {
                     });
                 } else {
                     let tr = `<tr><td style="color: red;">Template variable not available</td></tr>`;
-                        table.append(tr);
-                        newData.push(row);
+                    table.append(tr);
+                    newData.push(row);
                 }
 
-                $('.wa-variable-table-' + tableId + ' select').on('change', function() {
+                $('.wa-variable-table-' + tableId + ' select').on('change', function () {
                     var table = $(this).closest('table');
                     var data = [];
 
-                    table.find('tbody tr').each(function() {
+                    table.find('tbody tr').each(function () {
                         var index = $(this).find('td:first').text().trim();
                         var max = $(this).find('select').val();
                         data.push({ index: index, max_results: max });
@@ -62,7 +62,7 @@ jQuery(function ($) {
         });
     });
 
-    jQuery(document).ready(function($) {
+    jQuery(document).ready(function ($) {
         const configKeys = [
             'user_registration',
             'order_creation',
@@ -103,7 +103,7 @@ jQuery(function ($) {
         });
     });
 
-    $('#wa-sync-templates-btn').on('click', function(e) {
+    $('#wa-sync-templates-btn').on('click', function (e) {
         e.preventDefault();
         let $btn = $(this);
         if ($btn.hasClass('disabled')) return;
@@ -113,7 +113,7 @@ jQuery(function ($) {
         $.post(ajaxurl, {
             action: 'wa_sync_templates',
             security: $btn.data('nonce')
-        }, function(response) {
+        }, function (response) {
             $btn.removeClass('disabled').text('Sync Templates');
             if (response.success) {
                 alert(response.data);
@@ -124,3 +124,4 @@ jQuery(function ($) {
         });
     });
 });
+

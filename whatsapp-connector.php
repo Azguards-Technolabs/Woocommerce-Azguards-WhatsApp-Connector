@@ -20,6 +20,8 @@ require_once plugin_dir_path( __FILE__ ) . 'includes/wc-message.php';
 require_once plugin_dir_path( __FILE__ ) . 'includes/wc-variable.php';
 require_once plugin_dir_path( __FILE__ ) . 'includes/wc-woocommerce-variables.php';
 require_once plugin_dir_path( __FILE__ ) . 'includes/wc-variables-configuration-table.php';
+require_once plugin_dir_path( __FILE__ ) . 'includes/wc-abandoned-cart.php';
+require_once plugin_dir_path( __FILE__ ) . 'includes/wc-queue-processor.php';
 require_once plugin_dir_path( __FILE__ ) . 'sendMessage/user-register.php';
 require_once plugin_dir_path( __FILE__ ) . 'sendMessage/helper.php';
 require_once plugin_dir_path( __FILE__ ) . 'sendMessage/woocommerce-hooks.php';
@@ -156,23 +158,35 @@ add_action( 'admin_menu', function () {
  * Ensure WhatTack Template Builder and Campaign Edit pages are highlighted in WooCommerce menu
  */
 add_filter( 'parent_file', function ( $parent_file ) {
-    $screen = get_current_screen();
-    if ( $screen && in_array( $screen->id, [ 'admin_page_wa-template-builder', 'admin_page_wa-campaign-edit' ] ) ) {
+    $current_page = isset($_GET['page']) ? sanitize_text_field($_GET['page']) : '';
+    if ( in_array( $current_page, [ 'wa-template-builder', 'wa-campaign-edit' ] ) ) {
         return 'woocommerce';
     }
     return $parent_file;
-} );
+}, 9999 );
 
 add_filter( 'submenu_file', function ( $submenu_file ) {
-    $screen = get_current_screen();
-    if ( $screen ) {
-        if ( $screen->id === 'admin_page_wa-template-builder' ) {
-            return 'wa-templates-grid';
-        } elseif ( $screen->id === 'admin_page_wa-campaign-edit' ) {
-            return 'wa-campaigns';
-        }
+    $current_page = isset($_GET['page']) ? sanitize_text_field($_GET['page']) : '';
+    if ( $current_page === 'wa-template-builder' ) {
+        return 'wa-templates-grid';
+    } elseif ( $current_page === 'wa-campaign-edit' ) {
+        return 'wa-campaigns';
     }
     return $submenu_file;
+}, 9999 );
+
+/**
+ * Register custom screens with WooCommerce so it doesn't collapse the menu
+ */
+add_filter( 'woocommerce_screen_ids', function ( $ids ) {
+    $ids[] = 'admin_page_wa-template-builder';
+    $ids[] = 'admin_page_wa-campaign-edit';
+    $ids[] = 'toplevel_page_wa-template-builder';
+    $ids[] = 'toplevel_page_wa-campaign-edit';
+    $ids[] = 'woocommerce_page_wa-customers';
+    $ids[] = 'woocommerce_page_wa-campaigns';
+    $ids[] = 'woocommerce_page_wa-templates-grid';
+    return $ids;
 } );
 
 add_action( 'current_screen', function () {

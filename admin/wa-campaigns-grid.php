@@ -56,6 +56,8 @@ if ( ! empty( $_REQUEST['bulk_action'] ) && ! empty( $_REQUEST['campaign_ids'] )
                 ] );
                 $wpdb->query( $wpdb->prepare( "UPDATE $table SET status='SCHEDULED' WHERE campaign_id = %d", $campaign_id ) );
             }
+        } elseif ( 'retry' === $action ) {
+            $wpdb->query( $wpdb->prepare( "UPDATE $table SET failed_count=0, status='SCHEDULED' WHERE campaign_id = %d", $campaign_id ) );
         }
     }
 }
@@ -98,6 +100,7 @@ $total = count( $campaigns );
                     <option value="">Bulk actions</option>
                     <option value="pause">Pause</option>
                     <option value="resume">Resume</option>
+                    <option value="retry">Retry</option>
                     <option value="delete">Delete</option>
                 </select>
                 <input type="submit" id="doaction" class="button action" value="Apply">
@@ -130,13 +133,24 @@ $total = count( $campaigns );
                     </th>
                     <td class="column-id"><?php echo esc_html( $camp->campaign_id ); ?></td>
                     <td class="column-title column-primary" data-colname="Campaign Name">
-                        <strong><a class="row-title" href="?page=wa-campaign-edit&id=<?php echo esc_attr( $camp->campaign_id ); ?>"><?php echo esc_html( $camp->campaign_name ); ?></a></strong>
+                        <strong>
+                            <?php if ( $camp->sent_count == 0 ): ?>
+                                <a class="row-title" href="?page=wa-campaign-edit&id=<?php echo esc_attr( $camp->campaign_id ); ?>"><?php echo esc_html( $camp->campaign_name ); ?></a>
+                            <?php else: ?>
+                                <span class="row-title"><?php echo esc_html( $camp->campaign_name ); ?></span>
+                            <?php endif; ?>
+                        </strong>
                         <div class="row-actions">
-                            <span class="edit"><a href="?page=wa-campaign-edit&id=<?php echo esc_attr( $camp->campaign_id ); ?>">Edit</a> | </span>
+                            <?php if ( $camp->sent_count == 0 ): ?>
+                                <span class="edit"><a href="?page=wa-campaign-edit&id=<?php echo esc_attr( $camp->campaign_id ); ?>">Edit</a> | </span>
+                            <?php endif; ?>
                             <?php if ( strtolower($camp->status) === 'paused' ): ?>
                                 <span class="resume"><a href="#" onclick="jQuery(this).closest('form').find('select[name=bulk_action]').val('resume'); jQuery(this).closest('tr').find('input[type=checkbox]').prop('checked', true); jQuery(this).closest('form').submit(); return false;">Resume</a> | </span>
                             <?php else: ?>
                                 <span class="pause"><a href="#" onclick="jQuery(this).closest('form').find('select[name=bulk_action]').val('pause'); jQuery(this).closest('tr').find('input[type=checkbox]').prop('checked', true); jQuery(this).closest('form').submit(); return false;">Pause</a> | </span>
+                            <?php endif; ?>
+                            <?php if ( $camp->failed_count > 0 ): ?>
+                                <span class="retry"><a href="#" onclick="jQuery(this).closest('form').find('select[name=bulk_action]').val('retry'); jQuery(this).closest('tr').find('input[type=checkbox]').prop('checked', true); jQuery(this).closest('form').submit(); return false;">Retry</a> | </span>
                             <?php endif; ?>
                             <span class="trash"><a href="#" class="submitdelete" onclick="if(confirm('Delete this campaign?')) { jQuery(this).closest('form').find('select[name=bulk_action]').val('delete'); jQuery(this).closest('tr').find('input[type=checkbox]').prop('checked', true); jQuery(this).closest('form').submit(); } return false;">Delete</a></span>
                         </div>

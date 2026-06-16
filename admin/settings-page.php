@@ -145,6 +145,15 @@ class WC_Settings_WhatsApp_Connector extends WC_Settings_Page {
         }
 
         $settings[] = [
+            'title'    => __( 'Consider Abandoned After (minutes)', 'whatsapp-connector' ),
+            'desc'     => __( 'Number of minutes of inactivity before a cart is treated as abandoned. Recommended: 60.', 'whatsapp-connector' ),
+            'id'       => 'wa_abandoned_cart_trigger_delay',
+            'type'     => 'text',
+            'default'  => '60',
+            'desc_tip' => true,
+        ];
+
+        $settings[] = [
             'type' => 'sectionend',
             'id'   => 'wa_general_config',
         ];

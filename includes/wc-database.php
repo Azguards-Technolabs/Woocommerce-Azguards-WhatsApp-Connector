@@ -27,7 +27,7 @@ class WA_Database {
             footer text DEFAULT NULL,
             buttons text DEFAULT NULL,
             carousel_cards text DEFAULT NULL,
-            media_handle varchar(255) DEFAULT NULL,
+            media_handle text DEFAULT NULL,
             status varchar(50) NOT NULL DEFAULT 'PENDING',
             created_at datetime DEFAULT CURRENT_TIMESTAMP,
             updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

@@ -23,23 +23,56 @@ function wa_process_template_variables( $template_option_key, $source_object ) {
 
         switch ( $property ) {
             case 'first_name':
+            case 'billing_first_name':
                 $value = method_exists( $source_object, 'get_billing_first_name' )
                     ? $source_object->get_billing_first_name()
                     : '';
                 break;
 
             case 'last_name':
+            case 'billing_last_name':
                 $value = method_exists( $source_object, 'get_billing_last_name' )
                     ? $source_object->get_billing_last_name()
                     : '';
+                break;
+
+            case 'items_summary':
+                if ( method_exists( $source_object, 'get_items' ) ) {
+                    $items_text = [];
+                    foreach ( $source_object->get_items() as $item ) {
+                        $qty  = $item->get_quantity();
+                        $name = $item->get_name();
+                        // We use a default structure if the exact inner template isn't available at runtime.
+                        $items_text[] = "{$qty} x {$name}";
+                    }
+                    $value = implode( "\n", $items_text );
+                }
                 break;
 
             default:
                 if ( method_exists( $source_object, $method ) ) {
                     $value = $source_object->$method();
                 } else {
-                    $data  = is_callable( [ $source_object, 'get_data' ] ) ? $source_object->get_data() : [];
-                    $value = $data[ $property ] ?? '';
+                    // Dot Notation Parsing 
+                    // Support order.grand_total to grand_total
+                    $clean_prop = $property;
+                    if ( strpos( $clean_prop, 'order.' ) === 0 ) {
+                        $clean_prop = str_replace( 'order.', '', $clean_prop );
+                    }
+                    
+                    if ( $clean_prop === 'grand_total' || $clean_prop === 'total' ) {
+                        $value = method_exists($source_object, 'get_total') ? $source_object->get_total() : '';
+                    } else if ( $clean_prop === 'status' ) {
+                        $value = method_exists($source_object, 'get_status') ? $source_object->get_status() : '';
+                    } else if ( $clean_prop === 'order_number' || $clean_prop === 'id' ) {
+                        $value = method_exists($source_object, 'get_order_number') ? $source_object->get_order_number() : ($source_object->get_id() ?? '');
+                    } else if ( method_exists( $source_object, 'get_' . $clean_prop ) ) {
+                        $dynamic_method = 'get_' . $clean_prop;
+                        $value = $source_object->$dynamic_method();
+                    } else {
+                        $data  = is_callable( [ $source_object, 'get_data' ] ) ? $source_object->get_data() : [];
+                        $value = $data[ $property ] ?? ( $data[ $clean_prop ] ?? '' );
+                    }
                 }
                 break;
         }

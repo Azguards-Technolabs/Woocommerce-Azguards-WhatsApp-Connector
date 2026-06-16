@@ -8,9 +8,43 @@ jQuery(document).ready(function ($) {
         var footerText = $('#wa_footer_text').val() || '';
         var bodyText = $('#wa_message_body').val() || '';
         var hookType = $('#wa_current_hook').val() || 'order_shipment';
+        var templateType = $('#wa_template_type').val() || 'STANDARD';
 
-        $('#preview_header').text(headerText);
+        if (templateType === 'CAROUSEL') {
+            footerText = '';
+        }
+
+        if (templateType === 'TEXT' || templateType === 'STANDARD') {
+            $('#preview_header').text(headerText).css({
+                'background': 'none',
+                'padding': '0',
+                'height': 'auto',
+                'border-radius': '0',
+                'margin-bottom': '0'
+            });
+        } else if (templateType === 'IMAGE' || templateType === 'VIDEO' || templateType === 'DOCUMENT') {
+            var mediaUrl = $('#wa_header_media_url').val();
+            if (mediaUrl) {
+                if (templateType === 'IMAGE') {
+                    $('#preview_header').html('<img src="' + mediaUrl + '" style="width:100%; max-height:200px; object-fit:cover; border-radius:8px 8px 0 0; margin-bottom: -15px;">');
+                } else if (templateType === 'VIDEO') {
+                    $('#preview_header').html('<video src="' + mediaUrl + '" style="width:100%; max-height:200px; border-radius:8px 8px 0 0; margin-bottom: -15px;" controls></video>');
+                } else {
+                    $('#preview_header').html('<div style="background:#e1e1e1; padding:20px; text-align:center; border-radius:8px 8px 0 0; margin-bottom: -15px;">📄 Document</div>');
+                }
+            } else {
+                $('#preview_header').html('<div style="background:#ddd; height:120px; display:flex; align-items:center; justify-content:center; color:#555; border-radius:8px 8px 0 0; margin-bottom: -15px;">' + templateType + ' Placeholder</div>');
+            }
+        } else if (templateType === 'CAROUSEL') {
+            $('#preview_header').empty(); // Carousel has no main header
+        }
         $('#preview_footer').text(footerText);
+
+        if (footerText) {
+            $('#preview_footer').show();
+        } else {
+            $('#preview_footer').hide();
+        }
 
         // Demo value replacements
         bodyText = bodyText.replace(/\{\{customer_firstname\}\}/g, 'Zubair');
@@ -42,21 +76,55 @@ jQuery(document).ready(function ($) {
         bodyText = bodyText.replace(/\n/g, '<br>');
         $('#preview_body').html(bodyText);
 
-        // Buttons
-        if ($('#wa_enable_buttons').is(':checked')) {
-            var buttonsHTML = '';
-            $('.wa-button-item').each(function () {
-                var btnText = $(this).find('.wa-button-text').val() || 'Button';
-                buttonsHTML += '<div class="wa-preview-btn"><span class="wa-btn-icon">&#128279;</span> ' + btnText + '</div>';
-            });
-            $('#preview_buttons').html(buttonsHTML).show();
-        } else {
+        if (templateType === 'CAROUSEL') {
             $('#preview_buttons').hide();
+            var cardsHtml = '<div style="display:flex; overflow-x:auto; gap:8px; margin-top:10px; padding-bottom:5px;">';
+            $('.wa-carousel-card').each(function () {
+                var $c = $(this);
+                var cHeaderType = $c.find('.wa-card-header-type').val();
+                var cHeaderUrl = $c.find('.wa-card-header-url').val();
+                var cBody = $c.find('.wa-card-body').val();
+
+                var mediaStr = '';
+                if (cHeaderType === 'IMAGE' && cHeaderUrl) {
+                    mediaStr = '<img src="' + cHeaderUrl + '" style="width:100%; height:80px; object-fit:cover; border-radius:8px 8px 0 0;">';
+                } else if (cHeaderType === 'VIDEO' && cHeaderUrl) {
+                    mediaStr = '<div style="background:#000; height:80px; display:flex; align-items:center; justify-content:center; color:#fff; border-radius:8px 8px 0 0;">▶ Video</div>';
+                } else {
+                    mediaStr = '<div style="background:#ddd; height:80px; display:flex; align-items:center; justify-content:center; color:#666; font-size:10px; border-radius:8px 8px 0 0;">No Media</div>';
+                }
+
+                var btnsStr = '';
+                $c.find('.wa-card-button-item').each(function () {
+                    var bText = $(this).find('.wa-card-btn-text').val() || 'Button';
+                    btnsStr += '<div style="color:#007bff; text-align:center; padding:5px 0; border-top:1px solid #eee; font-size:11px;">' + bText + '</div>';
+                });
+
+                cardsHtml += '<div style="flex:0 0 140px; border:1px solid #eee; border-radius:8px; background:#fff; overflow:hidden;">' +
+                    mediaStr +
+                    '<div style="padding:6px; font-size:11px; white-space:normal; overflow:hidden; text-overflow:ellipsis; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical;">' + (cBody || '...') + '</div>' +
+                    btnsStr +
+                    '</div>';
+            });
+            cardsHtml += '</div>';
+            $('#preview_body').append(cardsHtml);
+        } else {
+            // Buttons
+            if ($('#wa_enable_buttons').is(':checked')) {
+                var buttonsHTML = '';
+                $('.wa-button-item').each(function () {
+                    var btnText = $(this).find('.wa-button-text').val() || 'Button';
+                    buttonsHTML += '<div class="wa-preview-btn"><span class="wa-btn-icon">&#128279;</span> ' + btnText + '</div>';
+                });
+                $('#preview_buttons').html(buttonsHTML).show();
+            } else {
+                $('#preview_buttons').hide();
+            }
         }
     }
 
     $('#wa_header_text, #wa_message_body, #wa_footer_text').on('input', updatePreview);
-    $('#wa_enable_buttons').on('change', function() {
+    $('#wa_enable_buttons').on('change', function () {
         if ($(this).is(':checked')) {
             $('#wa_buttons_row').show();
         } else {
@@ -78,9 +146,8 @@ jQuery(document).ready(function ($) {
 
         if (type === 'CAROUSEL') {
             $('.wa-standard-row').hide();
-            // Carousel still needs a root Body and potentially Footer
+            // Carousel still needs a root Body
             $('#wa_message_body').closest('tr').show();
-            $('#wa_footer_text').closest('tr').show();
             $('#wa_carousel_row').show();
             // Load from RAW_CAROUSEL_CARDS if empty
             if ($('.wa-carousel-card').length === 0) {
@@ -111,10 +178,6 @@ jQuery(document).ready(function ($) {
         updatePreview();
     });
 
-    // Manually trigger initial state to respect saved values
-    $('#wa_template_type').trigger('change');
-    $('#wa_header_type').trigger('change');
-
     $('#wa_header_type').on('change', function () {
         var type = $(this).val();
         if (type === 'TEXT') {
@@ -128,6 +191,12 @@ jQuery(document).ready(function ($) {
             $('#wa_header_media_row').show();
         }
     });
+
+    // Manually trigger initial state to respect saved values
+    $('#wa_template_type').trigger('change');
+    $('#wa_header_type').trigger('change');
+
+    $(document).on('input change', '.wa-card-body, .wa-card-btn-text, .wa-card-header-type, .wa-card-header-url', updatePreview);
 
 
     var custom_uploader;
@@ -169,6 +238,7 @@ jQuery(document).ready(function ($) {
                     $('#wa_header_media_url').val(response.data.preview_link);
                     $('#wa_media_status').text('Upload Complete ✅').css('color', 'green');
                     $('#wa_media_preview').html('<a href="' + response.data.preview_link + '" target="_blank">Preview Uploaded File</a>');
+                    updatePreview();
                 } else {
                     $('#wa_media_status').text('Failed: ' + response.data).css('color', 'red');
                 }
@@ -225,7 +295,7 @@ jQuery(document).ready(function ($) {
         $card.find('.card-num').text(numCards + 1);
 
         // Initial visibility for upload row
-        $card.find('.wa-card-header-type').on('change', function() {
+        $card.find('.wa-card-header-type').on('change', function () {
             if ($(this).val() === 'TEXT') {
                 $card.find('.wa-card-media-upload-row').hide();
             } else {
@@ -337,6 +407,7 @@ jQuery(document).ready(function ($) {
                     $card.find('.wa-card-header-handle').val(response.data.document_id);
                     $card.find('.wa-card-header-url').val(response.data.preview_link);
                     $card.find('.wa-card-media-status').html('<a href="' + response.data.preview_link + '" target="_blank">View File ✅</a>').css('color', 'green');
+                    updatePreview();
                 } else {
                     $card.find('.wa-card-media-status').text('Failed').css('color', 'red');
                 }
@@ -415,13 +486,19 @@ jQuery(document).ready(function ($) {
             buttons: []
         };
 
-        if (templateData.template_type === 'STANDARD') {
-            $('.wa-button-item').each(function () {
-                templateData.buttons.push({
-                    type: $(this).find('.wa-button-type').val(),
-                    text: $(this).find('.wa-button-text').val(),
-                    url: $(this).find('.wa-button-url').val()
-                });
+        if (templateData.template_type !== 'CAROUSEL') {
+            $('.wa-button-item:visible').each(function () {
+                var textVal = $(this).find('.wa-button-text').val() || '';
+                var urlVal = $(this).find('.wa-button-url').val() || '';
+
+                // Only push if there is actually text
+                if (textVal) {
+                    templateData.buttons.push({
+                        type: $(this).find('.wa-button-type').val(),
+                        text: textVal,
+                        url: urlVal
+                    });
+                }
             });
         } else {
             // Parse CAROUSEL cards
