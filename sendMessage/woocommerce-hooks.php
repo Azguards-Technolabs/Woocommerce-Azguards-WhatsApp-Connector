@@ -88,10 +88,12 @@ function wa_dispatch_event_template( $order_id, $enable_key, $template_key, $var
         return;
     }
 
-    error_log( "[WhatsApp] Dispatching '{$log_context}' for Order #{$order_id} with template '{$template_id}'." );
-
     $variables   = wa_process_template_variables( $variable_key, $order );
     $user_detail = wa_get_user_detail_data( $order );
+
+    error_log( "[WhatsApp] Dispatching '{$log_context}' for Order #{$order_id}." );
+    error_log( "[WhatsApp] Template ID: " . $template_id );
+    error_log( "[WhatsApp] Variables: " . wp_json_encode( $variables ) );
 
     WA_Message::send_message( $variables, $template_id, $log_context, $user_detail );
 }

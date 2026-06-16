@@ -42,16 +42,16 @@ class WA_Templates {
             return array( '' => __( 'API URL not set', 'whatsapp-connector' ) );
         }
 
-        $business_id = '18462116-8abf-4960-80b2-dd6c76e2532c';
-        $user_id     = 'a008d8b8-bc54-4e43-9a62-67b3c1b546f3';
+        $business_id = get_option( 'wa_business_id' );
+        $user_id     = get_option( 'wa_user_id' );
 
         $response = wp_remote_get(
             $api_url,
             array(
                 'headers' => array(
-                    // 'Authorization' => 'Bearer ' . $token,
-                    'businessId' => $business_id,
-                    'userId'     => $user_id,
+                    'Authorization' => 'Bearer ' . $token,
+                    'businessId'    => $business_id,
+                    'userId'        => $user_id,
                 ),
             )
         );
@@ -473,6 +473,7 @@ if ( ! function_exists( 'wa_save_builder_template_handler' ) ) :
             $api_url .= '/' . urlencode( $existing_api_id );
         }
 
+        $variable_mapping = [];
         $payload = wa_build_template_api_payload(
             $template_name, $category, $language,
             $header_type, $header_text,
@@ -481,7 +482,8 @@ if ( ! function_exists( 'wa_save_builder_template_handler' ) ) :
             $header_handle, 
             $header_url,
             $template_type,
-            $carousel_cards
+            $carousel_cards,
+            $variable_mapping
         );
 
         error_log( "[WA Builder] $method Template: $template_name (Type: $template_type) to URL: $api_url" );
@@ -540,6 +542,24 @@ if ( ! function_exists( 'wa_save_builder_template_handler' ) ) :
             ];
             if ( isset( $mapped_option_keys[ $hook ] ) ) {
                 update_option( $mapped_option_keys[ $hook ], $api_template_id );
+            }
+        }
+
+        // Save variable mapping to the corresponding _table_data option
+        if ( ! empty( $hook ) ) {
+            $mapped_table_data_keys = [
+                'order_created'     => 'wa_order_creation_table_data',
+                'order_shipment'    => 'wa_order_shipment_table_data',
+                'order_invoice'     => 'wa_order_invoice_table_data',
+                'order_creditmemo'  => 'wa_order_credit_memo_table_data',
+                'order_on_hold'     => 'wa_order_on_hold_table_data',
+                'order_failed'      => 'wa_order_failed_table_data',
+                'order_completed'   => 'wa_order_completed_table_data',
+                'order_draft'       => 'wa_order_draft_table_data',
+                'order_cancellation'=> 'wa_order_cancellation_table_data',
+            ];
+            if ( isset( $mapped_table_data_keys[ $hook ] ) ) {
+                update_option( $mapped_table_data_keys[ $hook ], wp_json_encode( $variable_mapping ) );
             }
         }
 
@@ -675,7 +695,7 @@ endif;
  * @return array
  */
 if ( ! function_exists( 'wa_build_template_api_payload' ) ) :
-    function wa_build_template_api_payload( $name, $category, $language, $header_type, $header_text, $body, $footer, $buttons = [], $header_handle = '', $header_url = '', $template_type = 'STANDARD', $carousel_cards_json = '[]' ) {
+    function wa_build_template_api_payload( $name, $category, $language, $header_type, $header_text, $body, $footer, $buttons = [], $header_handle = '', $header_url = '', $template_type = 'STANDARD', $carousel_cards_json = '[]', &$variable_mapping = [] ) {
 
         $varMap  = [];
         $counter = 0;
@@ -928,6 +948,15 @@ if ( ! function_exists( 'wa_build_template_api_payload' ) ) :
                 // Use `carousel` key — matches DTO field name 
                 $payload['carousel'] = $carousel;
             }
+        }
+
+        // Convert varMap to the format expected by wa_process_template_variables
+        $variable_mapping = [];
+        foreach ( $varMap as $prop => $index ) {
+            $variable_mapping[] = [
+                'index'       => $index,
+                'max_results' => $prop,
+            ];
         }
 
         return $payload;

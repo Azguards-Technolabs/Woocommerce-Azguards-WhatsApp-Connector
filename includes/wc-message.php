@@ -65,8 +65,8 @@ class WA_Message {
                 'headers' => array(
                     'Authorization' => 'Bearer ' . $token,
                     'Content-Type'  => 'application/json',
-                    'businessId'    => '18462116-8abf-4960-80b2-dd6c76e2532c',
-                    'userId'        => 'a008d8b8-bc54-4e43-9a62-67b3c1b546f3',
+                    'businessId'    => get_option( 'wa_business_id' ),
+                    'userId'        => get_option( 'wa_user_id' ),
                 ),
                 'body'    => wp_json_encode( $body ),
             )
