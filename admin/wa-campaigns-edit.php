@@ -15,7 +15,7 @@ if ( $campaign_id ) {
 }
 
 // Fetch templates for the dropdown
-$templates = $wpdb->get_results( "SELECT entity_id, template_name, template_id, body FROM $tpl_table ORDER BY template_name ASC" );
+$templates = $wpdb->get_results( "SELECT entity_id, template_name, template_id, body FROM $tpl_table WHERE status = 'APPROVED' ORDER BY template_name ASC" );
 
 // Pre-calculate variables for UI interaction
 $template_data = [];
