@@ -677,11 +677,12 @@ endif;
 if ( ! function_exists( 'wa_build_template_api_payload' ) ) :
     function wa_build_template_api_payload( $name, $category, $language, $header_type, $header_text, $body, $footer, $buttons = [], $header_handle = '', $header_url = '', $template_type = 'STANDARD', $carousel_cards_json = '[]' ) {
 
+        $counter = 0;
+        $varMap  = [];
+
         // --- Helper: convert {{var_name}} → {{1}}, {{2}}, ... and collect param names ---
-        $process_vars = function( string $text, bool $is_url = false ) use ( &$counter_ref ) {
+        $process_vars = function( string $text, bool $is_url = false ) use ( &$counter, &$varMap ) {
             $params  = [];
-            $varMap  = [];
-            $counter = 0;
 
             $transformed = preg_replace_callback(
                 '/\{\{\s*(?:var\s+)?(.*?)\s*\}\}/',
@@ -733,7 +734,6 @@ if ( ! function_exists( 'wa_build_template_api_payload' ) ) :
         $payload = [
             'name'       => $safe_name,
             'category'   => strtoupper( $category ),
-            'type'       => $api_type,
             'language'   => $language,
             'components' => [],
         ];
@@ -760,10 +760,8 @@ if ( ! function_exists( 'wa_build_template_api_payload' ) ) :
                             'format' => $c_header_type,
                         ],
                         [
-                            'type'   => 'BODY',
-                            'format' => 'TEXT',
-                            'text'   => $card_body_result['text'],
-                            'param'  => $card_body_result['params'] ?: null,
+                            'type' => 'BODY',
+                            'text' => $card_body_result['text'],
                         ],
                     ],
                 ];
@@ -780,7 +778,6 @@ if ( ! function_exists( 'wa_build_template_api_payload' ) ) :
                         $url_val            = $btn['button_url'] ?? '';
                         $url_result         = $process_vars( $url_val, true );
                         $btn_entry['url']   = $url_result['text'];
-                        $btn_entry['param'] = $url_result['params'] ?: null;
                     } elseif ( $btn_type === 'PHONE_NUMBER' ) {
                         $btn_entry['phone_number'] = $btn['phone_number'] ?? '';
                     }
@@ -829,10 +826,8 @@ if ( ! function_exists( 'wa_build_template_api_payload' ) ) :
             $body_result = $process_vars( $body_clean );
 
             $payload['components'][] = [
-                'type'   => 'BODY',
-                'format' => 'TEXT',
-                'text'   => $body_result['text'],
-                'param'  => $body_result['params'] ?: null,
+                'type' => 'BODY',
+                'text' => $body_result['text'],
             ];
         }
 
@@ -864,7 +859,6 @@ if ( ! function_exists( 'wa_build_template_api_payload' ) ) :
                     }
                     $url_result         = $process_vars( $url_val, true );
                     $btn_entry['url']   = $url_result['text'];
-                    $btn_entry['param'] = $url_result['params'] ?: null;
                 } elseif ( $btn_type === 'PHONE_NUMBER' ) {
                     $phone = trim( $btn['phone_number'] ?? $btn['url'] ?? '' );
                     if ( empty( $phone ) ) {
