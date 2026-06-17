@@ -56,8 +56,8 @@ function whatsapp_connector_plugin_default_values() {
     }
 
     // Legacy/Internal URLs (keeping them just in case, but updating to match defaults where applicable)
-    update_option( 'wa_contact_api_url', 'https://whatatalk-api.azguardstech.com/v1/contact' );
-    update_option( 'wa_message_api_url', 'https://whatatalk-api.azguardstech.com/v1/message/sendTemplate' );
+    add_option( 'wa_contact_api_url', 'https://wp-conn.aztechstaging.in/v1/contact' );
+    add_option( 'wa_message_api_url', 'https://wp-conn.aztechstaging.in/v1/message/sendTemplate' );
 }
 add_action( 'whatsapp_connector_plugin_default_options', 'whatsapp_connector_plugin_default_values' );
 
