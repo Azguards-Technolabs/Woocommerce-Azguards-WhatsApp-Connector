@@ -467,6 +467,22 @@ if ( ! function_exists( 'wa_save_builder_template_handler' ) ) :
             $existing_api_id = get_option( "wa_template_{$hook}_assigned_id" );
         }
 
+        // If no real API ID found yet, check database by name and language to avoid 409 Conflict
+        if ( ! $existing_api_id || strpos( $existing_api_id, 'tpl_' ) === 0 ) {
+            $match = $wpdb->get_row( $wpdb->prepare(
+                "SELECT entity_id, template_id FROM {$table_name} WHERE template_name = %s AND language = %s AND template_id NOT LIKE 'tpl_%%' ORDER BY entity_id DESC LIMIT 1",
+                $template_name,
+                $language
+            ) );
+            if ( $match ) {
+                $existing_api_id = $match->template_id;
+                // Ensure we update this record locally too
+                if ( ! $entity_id ) {
+                    $entity_id = (int) $match->entity_id;
+                }
+            }
+        }
+
         $method = 'POST';
         if ( $existing_api_id && strpos( $existing_api_id, 'tpl_' ) !== 0 ) {
             $method  = 'PUT';
@@ -520,6 +536,11 @@ if ( ! function_exists( 'wa_save_builder_template_handler' ) ) :
                 // Look into component data or other fields if available in $data on conflict
                 $api_template_id = $data['error']['id'] ?? $data['error']['templateId'] ?? null;
             }
+        }
+
+        // Fallback to existing API ID if not returned in response (e.g. for PUT requests or conflicts)
+        if ( ! $api_template_id && $existing_api_id && strpos( $existing_api_id, 'tpl_' ) !== 0 ) {
+            $api_template_id = $existing_api_id;
         }
 
         if ( $api_template_id && ! $is_standalone ) {
