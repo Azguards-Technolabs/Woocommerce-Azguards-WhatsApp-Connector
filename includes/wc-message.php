@@ -173,13 +173,13 @@ class WA_Message {
                 'headers' => array(
                     'Authorization' => 'Bearer ' . $token,
                     'Content-Type'  => 'application/json',
+
                 ),
                 'body'    => wp_json_encode( $body ),
             )
         );
 
         if ( is_wp_error( $response ) ) {
-            error_log( "[WhatsApp] API Connection Error: " . $response->get_error_message() );
             return new WP_Error( 'api_error', __( 'Failed to call message API.', 'whatsapp-connector' ) );
         }
 
@@ -193,11 +193,9 @@ class WA_Message {
 
         // Debug logging.
         error_log( '--------------------------Start ' . $flag . '--------------------------' );
-        error_log( "[WhatsApp] API URL: " . $api_url );
-        error_log( "[WhatsApp] Request Body: " . wp_json_encode( $body ) );
-        error_log( "[WhatsApp] cURL Command:\n" . $curl_command );
-        error_log( "[WhatsApp] Response Code: " . $response_code );
-        error_log( "[WhatsApp] Response Body: " . $response_body );
+        error_log( print_r( $body, true ) );
+        error_log( wp_json_encode( $body ) );
+        error_log( print_r( json_decode( $response_body, true ), true ) );
         error_log( '--------------------------End ' . $flag . '--------------------------' );
 
         return json_decode( $response_body, true );
