@@ -45,6 +45,16 @@ class WA_Message {
 
         $api_url = get_option( 'wa_message_api_url' );
 
+        global $wpdb;
+        $table_templates = $wpdb->prefix . 'azguards_whatsapp_templates';
+        $template_status = $wpdb->get_var( $wpdb->prepare( "SELECT status FROM {$table_templates} WHERE template_id = %s", $template_id ) );
+
+        if ( $template_status && strtoupper( $template_status ) === 'PENDING' ) {
+            error_log( "[WhatsApp] WARNING: Template '{$template_id}' is still PENDING approval. Message sending may fail." );
+        } elseif ( $template_status && strtoupper( $template_status ) !== 'APPROVED' ) {
+            error_log( "[WhatsApp] ERROR: Template '{$template_id}' is not APPROVED (Status: " . strtoupper( $template_status ) . "). Message delivery is likely to fail." );
+        }
+
         $converted_placeholder_values = array();
         foreach ( $template_variables as $key => $value ) {
             $converted_placeholder_values[] = array(
@@ -80,10 +90,18 @@ class WA_Message {
         $response_body = wp_remote_retrieve_body( $response );
         $response_code = wp_remote_retrieve_response_code( $response );
 
+        $curl_command = "curl -X POST '{$api_url}' \\\n"
+            . "-H 'Authorization: Bearer {$token}' \\\n"
+            . "-H 'Content-Type: application/json' \\\n"
+            . "-H 'businessId: " . get_option( 'wa_business_id' ) . "' \\\n"
+            . "-H 'userId: " . get_option( 'wa_user_id' ) . "' \\\n"
+            . "-d '" . wp_json_encode( $body ) . "'";
+
         // Debug logging.
         error_log( '--------------------------Start ' . $flag . '--------------------------' );
         error_log( "[WhatsApp] API URL: " . $api_url );
         error_log( "[WhatsApp] Request Body: " . wp_json_encode( $body ) );
+        error_log( "[WhatsApp] cURL Command:\n" . $curl_command );
         error_log( "[WhatsApp] Response Code: " . $response_code );
         error_log( "[WhatsApp] Response Body: " . $response_body );
         error_log( '--------------------------End ' . $flag . '--------------------------' );

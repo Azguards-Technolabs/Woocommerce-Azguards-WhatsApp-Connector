@@ -84,7 +84,7 @@ function wa_dispatch_event_template( $order_id, $enable_key, $template_key, $var
 
     $template_id = get_option( $template_key );
     if ( empty( $template_id ) ) {
-        error_log( "[WhatsApp] No template configured for '{$log_context}' (option key: {$template_key}). Skipping." );
+        error_log( "[WhatsApp] Action missing Template mapping for '{$log_context}' (option key: {$template_key} is empty). Please ensure a template is assigned and saved in the plugin settings!" );
         return;
     }
 
@@ -95,7 +95,15 @@ function wa_dispatch_event_template( $order_id, $enable_key, $template_key, $var
     error_log( "[WhatsApp] Template ID: " . $template_id );
     error_log( "[WhatsApp] Variables: " . wp_json_encode( $variables ) );
 
-    WA_Message::send_message( $variables, $template_id, $log_context, $user_detail );
+    $result = WA_Message::send_message( $variables, $template_id, $log_context, $user_detail );
+
+    if ( is_wp_error( $result ) ) {
+        error_log( "[WhatsApp] Dispatch Error for '{$log_context}' (Order #{$order_id}): " . $result->get_error_message() );
+    } elseif ( is_array( $result ) && isset( $result['status'] ) && $result['status'] === false ) {
+        error_log( "[WhatsApp] API Declined Message for '{$log_context}' (Order #{$order_id}): " . wp_json_encode( $result ) );
+    } else {
+        error_log( "[WhatsApp] Successfully processed '{$log_context}' for Order #{$order_id}." );
+    }
 }
 
 /**
