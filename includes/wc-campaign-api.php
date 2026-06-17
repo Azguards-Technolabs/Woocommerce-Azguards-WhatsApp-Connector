@@ -267,6 +267,19 @@ if ( ! function_exists( 'wa_sync_campaigns' ) ) :
 
         $api_base     = rtrim( get_option( 'wa_template_api_url', 'https://whatatalk-api.azguardstech.com' ), '/' );
         $api_url      = $api_base . '/scheduler-service/api/v1/schedule';
+        $business_id  = get_option( 'wa_business_id' );
+        $user_id      = get_option( 'wa_user_id' );
+
+        if ( empty( $business_id ) || empty( $user_id ) ) {
+            error_log( "[WA Campaign Sync] Business ID or User ID missing. Attempting refresh." );
+            $auth_data = WA_Auth::get_token();
+            if ( is_wp_error( $auth_data ) ) {
+                 return new WP_Error( 'wa_sync_config_error', 'Could not retrieve business or user IDs.' );
+            }
+            $business_id = get_option( 'wa_business_id' );
+            $user_id     = get_option( 'wa_user_id' );
+            $token       = $auth_data['access_token'] ?? $token;
+        }
 
         $counts = [
             'received' => 0,
@@ -283,6 +296,8 @@ if ( ! function_exists( 'wa_sync_campaigns' ) ) :
                 'headers' => [
                     'Authorization' => 'Bearer ' . $token,
                     'Content-Type'  => 'application/json',
+                    'businessId'    => $business_id,
+                    'userId'        => $user_id,
                 ],
                 'timeout' => 30,
             ] );
