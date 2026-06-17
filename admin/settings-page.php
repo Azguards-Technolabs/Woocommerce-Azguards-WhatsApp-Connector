@@ -240,6 +240,13 @@ class WC_Settings_WhatsApp_Connector extends WC_Settings_Page {
         $settings = $this->get_settings();
         WC_Admin_Settings::save_fields( $settings );
 
+        // Reschedule crons if general settings (which include crons) are saved.
+        if ( empty( $current_section ) ) {
+            if ( function_exists( 'wa_reschedule_crons' ) ) {
+                wa_reschedule_crons();
+            }
+        }
+
         if ( $current_section === 'templates' ) {
             $hooks = [
                 'order_created',
