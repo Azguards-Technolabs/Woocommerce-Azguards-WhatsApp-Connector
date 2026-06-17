@@ -267,7 +267,16 @@ if ( ! function_exists( 'wa_sync_campaigns' ) ) :
 
         $api_base     = rtrim( get_option( 'wa_template_api_url', 'https://whatatalk-api.azguardstech.com' ), '/' );
         $api_url      = $api_base . '/scheduler-service/api/v1/schedule';
-        $synced_count = 0;
+        $business_id  = get_option( 'wa_business_id' );
+        $user_id      = get_option( 'wa_user_id' );
+
+        $before_count = $wpdb->get_var( "SELECT COUNT(*) FROM $campaign_table" );
+        error_log( "[WA Campaign Sync] Initial DB Count: $before_count" );
+
+        $synced_count   = 0;
+        $inserted_count = 0;
+        $updated_count  = 0;
+        $skipped_count  = 0;
 
         // Fetch all remote campaigns (implementing retries)
         $response = null;
@@ -277,6 +286,8 @@ if ( ! function_exists( 'wa_sync_campaigns' ) ) :
                 'headers' => [
                     'Authorization' => 'Bearer ' . $token,
                     'Content-Type'  => 'application/json',
+                    'businessId'    => $business_id,
+                    'userId'        => $user_id,
                 ],
                 'timeout' => 30,
             ] );
@@ -294,11 +305,13 @@ if ( ! function_exists( 'wa_sync_campaigns' ) ) :
 
         $code = wp_remote_retrieve_response_code( $response );
         $body = wp_remote_retrieve_body( $response );
-        error_log( "[WA Campaign Sync] API Response (HTTP $code): " . substr($body, 0, 1000) );
 
         if ( $code !== 200 ) {
+            error_log( "[WA Campaign Sync] API Error (HTTP $code). Response: " . $body );
             return new WP_Error( 'wa_api_error', "API returned HTTP $code" );
         }
+
+        error_log( "[WA Campaign Sync] API Response (HTTP $code): " . substr($body, 0, 1000) );
 
         $api_data = json_decode( $body, true );
         $remote_campaigns = $api_data['result']['data'] ?? $api_data['data'] ?? [];
@@ -322,8 +335,12 @@ if ( ! function_exists( 'wa_sync_campaigns' ) ) :
 
             if ( $existing ) {
                 if ( $existing->status !== $remote_status ) {
+                    error_log( "[WA Campaign Sync] Updating campaign status: $remote_name (ID: $scheduler_id) to $remote_status" );
                     $wpdb->update( $campaign_table, [ 'status' => $remote_status ], [ 'campaign_id' => $existing->campaign_id ] );
+                    $updated_count++;
                     $synced_count++;
+                } else {
+                    $skipped_count++;
                 }
             } else {
                 // Insert new remote campaign
@@ -332,6 +349,7 @@ if ( ! function_exists( 'wa_sync_campaigns' ) ) :
                     $template_entity_id = (int) $wpdb->get_var( $wpdb->prepare( "SELECT entity_id FROM $template_table WHERE template_id = %s", $remote_template_id ) );
                 }
 
+                error_log( "[WA Campaign Sync] Inserting new remote campaign: $remote_name (ID: $scheduler_id)" );
                 $wpdb->insert( $campaign_table, [
                     'campaign_name'      => $remote_name,
                     'template_entity_id' => $template_entity_id,
@@ -340,11 +358,21 @@ if ( ! function_exists( 'wa_sync_campaigns' ) ) :
                     'status'             => $remote_status,
                     'created_at'         => current_time( 'mysql' ),
                 ] );
+                $inserted_count++;
                 $synced_count++;
             }
         }
 
-        error_log( "[WA Campaign Sync] Sync completed. Processed $synced_count campaigns." );
+        $after_count = $wpdb->get_var( "SELECT COUNT(*) FROM $campaign_table" );
+        error_log( sprintf(
+            "[WA Campaign Sync] Sync completed. Received: %d, Inserted: %d, Updated: %d, Skipped: %d, Final DB Count: %d",
+            count($remote_campaigns),
+            $inserted_count,
+            $updated_count,
+            $skipped_count,
+            $after_count
+        ) );
+
         return $synced_count;
     }
 endif;

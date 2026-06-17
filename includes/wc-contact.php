@@ -65,6 +65,9 @@ class WA_Contact {
 
         error_log( '[WhatTack Sync Request] User ID: ' . $user_id . ' | Payload: ' . wp_json_encode( $body ) );
 
+        $business_id = get_option( 'wa_business_id' );
+        $user_id     = get_option( 'wa_user_id' );
+
         // Send customer data with retries
         $response = null;
         for ( $i = 0; $i < 3; $i++ ) {
@@ -74,6 +77,8 @@ class WA_Contact {
                     'headers' => array(
                         'Authorization' => 'Bearer ' . $token,
                         'Content-Type'  => 'application/json',
+                        'businessId'    => $business_id,
+                        'userId'        => $user_id,
                     ),
                     'body'    => wp_json_encode( $body ),
                     'timeout' => 15,
@@ -97,9 +102,17 @@ class WA_Contact {
         
         $data = json_decode( $response_body, true );
 
+        $is_existing = false;
         if ( $response_code >= 400 ) {
-             $err_msg = $data['message'] ?? $data['error'] ?? "HTTP $response_code";
-             return new WP_Error( 'api_error', $err_msg );
+             $err_msg = $data['message'] ?? $data['error'] ?? $data['Result']['message'] ?? "HTTP $response_code";
+
+             // If contact already exists, we treat it as success to stop retries
+             if ( stripos( $err_msg, 'already exists' ) !== false ) {
+                 error_log( "[WA Contact Sync] User ID $user_id already exists on provider. Marking as synced." );
+                 $is_existing = true;
+             } else {
+                 return new WP_Error( 'api_error', $err_msg );
+             }
         }
 
         // Mark this user as synced to WhatTack, and store their resolved phone for campaign use
@@ -108,6 +121,11 @@ class WA_Contact {
         if ( $full_phone ) {
             update_user_meta( $user_id, 'wa_whatsapp_phone', $full_phone );
         }
+
+        if ( ! is_array( $data ) ) {
+            $data = [];
+        }
+        $data['_is_existing'] = $is_existing;
 
         return $data;
     }
@@ -122,6 +140,9 @@ class WA_Contact {
 
         global $wpdb;
 
+        $before_count = $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->usermeta} WHERE meta_key = 'wa_whatsapp_synced' AND meta_value = '1'" );
+        error_log( "[WA Contact Sync] Initial Synced Count: $before_count" );
+
         // Fetch users who are missing 'wa_whatsapp_synced' = 1
         $query = "
             SELECT u.ID FROM {$wpdb->users} u
@@ -130,32 +151,51 @@ class WA_Contact {
         ";
 
         $unsynced_user_ids = $wpdb->get_col( $query );
+        $total_found       = count( $unsynced_user_ids );
 
         if ( empty( $unsynced_user_ids ) ) {
             error_log( "[WA Contact Sync] No unsynced contacts found." );
             return 0;
         }
 
-        error_log( "[WA Contact Sync] Found " . count( $unsynced_user_ids ) . " unsynced contacts." );
+        error_log( "[WA Contact Sync] Found $total_found unsynced contacts." );
 
-        $synced_count = 0;
+        $synced_count   = 0;
+        $existing_count = 0;
+        $failed_count   = 0;
+
         foreach ( $unsynced_user_ids as $user_id ) {
             $result = self::sync_customer( $user_id );
+
             if ( is_wp_error( $result ) ) {
+                $failed_count++;
                 error_log( "[WA Contact Sync] Failed to sync user ID $user_id: " . $result->get_error_message() );
             } else {
-                $synced_count++;
+                if ( ! empty( $result['_is_existing'] ) ) {
+                    $existing_count++;
+                } else {
+                    $synced_count++;
+                }
             }
 
             // Limit loop safety for background sync
-            if ( $synced_count >= 100 ) {
+            if ( ($synced_count + $existing_count + $failed_count) >= 100 ) {
                 error_log( "[WA Contact Sync] Batch limit reached (100). Continuing in next run." );
                 break;
             }
         }
 
-        error_log( "[WA Contact Sync] Sync completed. Successfully synced $synced_count contacts." );
-        return $synced_count;
+        $after_count = $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->usermeta} WHERE meta_key = 'wa_whatsapp_synced' AND meta_value = '1'" );
+        error_log( sprintf(
+            "[WA Contact Sync] Sync completed. Processed: %d, Success (New): %d, Success (Existing): %d, Failed: %d, Final DB Synced Count: %d",
+            ($synced_count + $existing_count + $failed_count),
+            $synced_count,
+            $existing_count,
+            $failed_count,
+            $after_count
+        ) );
+
+        return ($synced_count + $existing_count);
     }
 }
 

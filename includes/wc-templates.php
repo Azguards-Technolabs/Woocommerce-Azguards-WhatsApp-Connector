@@ -190,7 +190,13 @@ if ( ! function_exists( 'wa_sync_templates' ) ) :
             WA_Database::create_tables();
         }
 
+        $before_count = $wpdb->get_var( "SELECT COUNT(*) FROM $table_name" );
+        error_log( "[WA Template Sync] Initial DB Count: $before_count" );
+
         $synced_count       = 0;
+        $inserted_count     = 0;
+        $updated_count      = 0;
+        $skipped_count      = 0;
         $page_count         = 0;
         $previous_first_id  = null;
         $next_url           = wa_get_template_list_page_url( $api_base_url, 0, 100 );
@@ -255,7 +261,11 @@ if ( ! function_exists( 'wa_sync_templates' ) ) :
             $previous_first_id = $first_id;
 
             foreach ( $templates_page as $template ) {
-                $template_id   = $template['id'];
+                $template_id   = $template['id'] ?? null;
+                if ( ! $template_id ) {
+                    $skipped_count++;
+                    continue;
+                }
                 $template_name = $template['name'];
                 $status        = $template['status'];
                 $type          = $template['type'];
@@ -320,9 +330,13 @@ if ( ! function_exists( 'wa_sync_templates' ) ) :
                 );
 
                 if ( $existing ) {
+                    error_log( "[WA Template Sync] Updating template: $template_name (ID: $template_id)" );
                     $wpdb->update( $table_name, $data_to_save, array( 'entity_id' => $existing ) );
+                    $updated_count++;
                 } else {
+                    error_log( "[WA Template Sync] Inserting new template: $template_name (ID: $template_id)" );
                     $wpdb->insert( $table_name, $data_to_save );
+                    $inserted_count++;
                 }
                 $synced_count++;
             }
@@ -336,7 +350,16 @@ if ( ! function_exists( 'wa_sync_templates' ) ) :
             }
         }
 
-        error_log( "[WA Sync] Sync completed successfully. Total templates: $synced_count" );
+        $after_count = $wpdb->get_var( "SELECT COUNT(*) FROM $table_name" );
+        error_log( sprintf(
+            "[WA Template Sync] Sync completed. Received: %d, Inserted: %d, Updated: %d, Skipped: %d, Final DB Count: %d",
+            $synced_count,
+            $inserted_count,
+            $updated_count,
+            $skipped_count,
+            $after_count
+        ) );
+
         return $synced_count;
     }
 endif;

@@ -160,12 +160,16 @@ $total = count( $campaigns );
                     <td class="column-date" data-colname="Schedule Time"><?php echo esc_html( date('M d, Y g:i a', strtotime($camp->schedule_time)) ); ?></td>
                     <td class="column-status" data-colname="Status">
                         <?php 
-                        $raw_status = strtolower($camp->status);
-                        if ( $raw_status === 'paused' ) {
-                            echo '<mark class="status-on-hold"><span>Paused</span></mark>';
-                        } else {
-                            echo '<mark class="status-processing"><span>Scheduled</span></mark>';
+                        $raw_status = strtoupper($camp->status);
+                        $status_class = 'status-processing'; // default
+
+                        if ( in_array( $raw_status, ['PAUSED', 'DELETED', 'FAILED'] ) ) {
+                            $status_class = 'status-on-hold';
+                        } elseif ( in_array( $raw_status, ['COMPLETED', 'APPROVED'] ) ) {
+                            $status_class = 'status-processing';
                         }
+
+                        echo '<mark class="' . $status_class . '"><span>' . esc_html( $raw_status ) . '</span></mark>';
                         ?>
                     </td>
                 </tr>
