@@ -197,19 +197,28 @@ if ( ! function_exists( 'wa_sync_templates' ) ) :
 
         while ( $next_url ) {
             $page_count++;
-            error_log( "[WA Sync] Fetching page $page_count. URL: $next_url" );
 
-            $response = wp_remote_get(
-                $next_url,
-                array(
-                    'headers' => array(
-                        'Authorization' => 'Bearer ' . $token,
-                        'businessId'    => $business_id,
-                        'userId'        => $user_id,
-                    ),
-                    'timeout' => 30,
-                )
-            );
+            // Fetch templates with retries
+            $response = null;
+            for ( $i = 0; $i < 3; $i++ ) {
+                error_log( "[WA Sync] Fetching page $page_count (Attempt " . ($i+1) . "). URL: $next_url" );
+                $response = wp_remote_get(
+                    $next_url,
+                    array(
+                        'headers' => array(
+                            'Authorization' => 'Bearer ' . $token,
+                            'businessId'    => $business_id,
+                            'userId'        => $user_id,
+                        ),
+                        'timeout' => 30,
+                    )
+                );
+
+                if ( ! is_wp_error( $response ) && wp_remote_retrieve_response_code( $response ) === 200 ) {
+                    break;
+                }
+                sleep( 1 );
+            }
 
             if ( is_wp_error( $response ) ) {
                 error_log( "[WA Sync] API Request Error: " . $response->get_error_message() );

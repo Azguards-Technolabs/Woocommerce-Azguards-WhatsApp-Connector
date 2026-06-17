@@ -65,17 +65,26 @@ class WA_Contact {
 
         error_log( '[WhatTack Sync Request] User ID: ' . $user_id . ' | Payload: ' . wp_json_encode( $body ) );
 
-        $response = wp_remote_post(
-            $api_url,
-            array(
-                'headers' => array(
-                    'Authorization' => 'Bearer ' . $token,
-                    'Content-Type'  => 'application/json',
-                ),
-                'body'    => wp_json_encode( $body ),
-                'timeout' => 15,
-            )
-        );
+        // Send customer data with retries
+        $response = null;
+        for ( $i = 0; $i < 3; $i++ ) {
+            $response = wp_remote_post(
+                $api_url,
+                array(
+                    'headers' => array(
+                        'Authorization' => 'Bearer ' . $token,
+                        'Content-Type'  => 'application/json',
+                    ),
+                    'body'    => wp_json_encode( $body ),
+                    'timeout' => 15,
+                )
+            );
+
+            if ( ! is_wp_error( $response ) && wp_remote_retrieve_response_code( $response ) < 300 ) {
+                break;
+            }
+            sleep( 1 );
+        }
 
         if ( is_wp_error( $response ) ) {
             return new WP_Error( 'api_error', __( 'Failed to call contact API. ', 'whatsapp-connector' ) . $response->get_error_message() );

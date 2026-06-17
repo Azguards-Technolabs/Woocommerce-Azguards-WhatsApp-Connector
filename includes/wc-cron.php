@@ -41,10 +41,10 @@ function wa_register_dynamic_cron_schedules( $schedules ) {
 }
 
 /**
- * Reschedule all cron jobs based on current settings.
+ * Reschedule all cron jobs based on current settings using WooCommerce Action Scheduler.
  */
 function wa_reschedule_crons() {
-    error_log( '[WA Cron] Rescheduling sync jobs.' );
+    error_log( '[WA Cron] Rescheduling sync jobs via Action Scheduler.' );
 
     $jobs = [
         'wa_campaign_sync_event' => 'wa_campaign_sync_schedule',
@@ -53,13 +53,28 @@ function wa_reschedule_crons() {
     ];
 
     foreach ( $jobs as $hook => $option ) {
+        // 1. Clear existing WP-Cron schedules (migration/cleanup)
         wp_clear_scheduled_hook( $hook );
+
+        // 2. Clear existing Action Scheduler actions for this hook
+        if ( function_exists( 'as_unschedule_all_actions' ) ) {
+            as_unschedule_all_actions( $hook );
+        }
 
         $interval = (int) get_option( $option, 0 );
         if ( $interval > 0 ) {
-            $schedule_slug = str_replace( '_schedule', '_sync', $option ) . "_{$interval}min";
-            wp_schedule_event( time(), $schedule_slug, $hook );
-            error_log( "[WA Cron] Scheduled $hook every $interval minutes ($schedule_slug)." );
+            $interval_seconds = $interval * 60;
+
+            if ( function_exists( 'as_schedule_recurring_action' ) ) {
+                // Use WooCommerce Action Scheduler
+                as_schedule_recurring_action( time(), $interval_seconds, $hook, [], 'whatsapp-connector' );
+                error_log( "[WA Cron] Scheduled $hook every $interval minutes using Action Scheduler (group: whatsapp-connector)." );
+            } else {
+                // Fallback to standard WP-Cron if Action Scheduler is missing
+                $schedule_slug = str_replace( '_schedule', '', $option ) . "_{$interval}min";
+                wp_schedule_event( time(), $schedule_slug, $hook );
+                error_log( "[WA Cron] Scheduled $hook every $interval minutes using WP-Cron ($schedule_slug)." );
+            }
         }
     }
 }
