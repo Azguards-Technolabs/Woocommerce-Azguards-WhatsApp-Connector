@@ -98,8 +98,14 @@ class WA_Contact {
         $data = json_decode( $response_body, true );
 
         if ( $response_code >= 400 ) {
-             $err_msg = $data['message'] ?? $data['error'] ?? "HTTP $response_code";
-             return new WP_Error( 'api_error', $err_msg );
+            $err_msg = $data['message'] ?? $data['error'] ?? "HTTP $response_code";
+
+            // Treat "already exists" as success
+            if ( $response_code === 400 && strpos( $err_msg, 'Contact already exists for this business' ) !== false ) {
+                error_log( "[WA Contact Sync] User ID $user_id already exists on provider. Marking as synced." );
+            } else {
+                return new WP_Error( 'api_error', $err_msg );
+            }
         }
 
         // Mark this user as synced to WhatTack, and store their resolved phone for campaign use
@@ -138,24 +144,53 @@ class WA_Contact {
 
         error_log( "[WA Contact Sync] Found " . count( $unsynced_user_ids ) . " unsynced contacts." );
 
-        $synced_count = 0;
+        $counts = [
+            'total'      => count( $unsynced_user_ids ),
+            'successful' => 0,
+            'existing'   => 0,
+            'failed'     => 0,
+            'processed'  => 0,
+        ];
+
         foreach ( $unsynced_user_ids as $user_id ) {
+            $counts['processed']++;
+
             $result = self::sync_customer( $user_id );
+
             if ( is_wp_error( $result ) ) {
+                $counts['failed']++;
                 error_log( "[WA Contact Sync] Failed to sync user ID $user_id: " . $result->get_error_message() );
             } else {
-                $synced_count++;
+                // If it was already marked as synced within sync_customer due to "already exists"
+                // we check if it was a real new sync or an existing one.
+                // However, sync_customer returns the API response data.
+                // For simplicity, if it's not WP_Error, we count based on what happened.
+
+                // Re-checking the body for "already exists" message to distinguish successful from existing
+                // but sync_customer already handles that logic internally and logs it.
+                // To be precise with counts, we could have sync_customer return more info,
+                // but we can also just check the message if available.
+
+                if ( isset( $result['message'] ) && strpos( $result['message'], 'Contact already exists' ) !== false ) {
+                    $counts['existing']++;
+                } else {
+                    $counts['successful']++;
+                }
             }
 
             // Limit loop safety for background sync
-            if ( $synced_count >= 100 ) {
+            if ( $counts['processed'] >= 100 ) {
                 error_log( "[WA Contact Sync] Batch limit reached (100). Continuing in next run." );
                 break;
             }
         }
 
-        error_log( "[WA Contact Sync] Sync completed. Successfully synced $synced_count contacts." );
-        return $synced_count;
+        error_log( sprintf(
+            "[WA Contact Sync] Sync completed. Total: %d, Processed: %d, Successful: %d, Existing: %d, Failed: %d",
+            $counts['total'], $counts['processed'], $counts['successful'], $counts['existing'], $counts['failed']
+        ) );
+
+        return $counts['successful'] + $counts['existing'];
     }
 }
 

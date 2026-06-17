@@ -190,7 +190,12 @@ if ( ! function_exists( 'wa_sync_templates' ) ) :
             WA_Database::create_tables();
         }
 
-        $synced_count       = 0;
+        $counts = [
+            'received' => 0,
+            'inserted' => 0,
+            'updated'  => 0,
+            'skipped'  => 0,
+        ];
         $page_count         = 0;
         $previous_first_id  = null;
         $next_url           = wa_get_template_list_page_url( $api_base_url, 0, 100 );
@@ -247,6 +252,8 @@ if ( ! function_exists( 'wa_sync_templates' ) ) :
                 break;
             }
 
+            $counts['received'] += count( $templates_page );
+
             $first_id = $templates_page[0]['id'] ?? null;
             if ( $first_id && $first_id === $previous_first_id ) {
                 error_log( '[WA Sync] Duplicate page detected, stopping pagination.' );
@@ -300,7 +307,7 @@ if ( ! function_exists( 'wa_sync_templates' ) ) :
                     $carousel_cards = $template['cards'];
                 }
 
-                $existing = $wpdb->get_var( $wpdb->prepare( "SELECT entity_id FROM $table_name WHERE template_id = %s", $template_id ) );
+                $existing = $wpdb->get_row( $wpdb->prepare( "SELECT entity_id, status FROM $table_name WHERE template_id = %s", $template_id ) );
 
                 $data_to_save = array(
                     'template_id'    => $template_id,
@@ -320,24 +327,32 @@ if ( ! function_exists( 'wa_sync_templates' ) ) :
                 );
 
                 if ( $existing ) {
-                    $wpdb->update( $table_name, $data_to_save, array( 'entity_id' => $existing ) );
+                    error_log( "[WA Sync] Updating template: $template_name (ID: $template_id)" );
+                    $wpdb->update( $table_name, $data_to_save, array( 'entity_id' => $existing->entity_id ) );
+                    $counts['updated']++;
                 } else {
+                    error_log( "[WA Sync] Inserting new template: $template_name (ID: $template_id)" );
                     $wpdb->insert( $table_name, $data_to_save );
+                    $counts['inserted']++;
                 }
-                $synced_count++;
             }
 
             $next_url = wa_get_template_sync_next_url( $api_base_url, $data, $next_url, $page_count, count( $templates_page ) );
 
             // Limit loop safety
-            if ( $synced_count > 1000 ) {
+            if ( $counts['received'] > 1000 ) {
                 error_log( "[WA Sync] Safety limit reached (1000 templates). Stopping sync." );
                 break;
             }
         }
 
-        error_log( "[WA Sync] Sync completed successfully. Total templates: $synced_count" );
-        return $synced_count;
+        $final_db_count = $wpdb->get_var( "SELECT COUNT(*) FROM $table_name" );
+        error_log( sprintf(
+            "[WA Sync] Sync completed. Received: %d, Inserted: %d, Updated: %d, Skipped: %d, Final DB Count: %d",
+            $counts['received'], $counts['inserted'], $counts['updated'], $counts['skipped'], $final_db_count
+        ) );
+
+        return $counts['inserted'] + $counts['updated'];
     }
 endif;
 
