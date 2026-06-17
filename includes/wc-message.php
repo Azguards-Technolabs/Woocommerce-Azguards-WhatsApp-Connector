@@ -75,7 +75,7 @@ class WA_Message {
             $token = $auth_token_data['access_token'];
         }
 
-        $api_url = get_option( 'wa_message_api_url' );
+        $api_url = rtrim( get_option( 'wa_template_api_url' ), '/' ) . '/messaging-service/api/v1/message/send';
 
         global $wpdb;
         $table_templates = $wpdb->prefix . 'azguards_whatsapp_templates';
@@ -173,6 +173,8 @@ class WA_Message {
                 'headers' => array(
                     'Authorization' => 'Bearer ' . $token,
                     'Content-Type'  => 'application/json',
+                    'businessId'    => get_option( 'wa_business_id' ),
+                    'userId'        => get_option( 'wa_user_id' ),
 
                 ),
                 'body'    => wp_json_encode( $body ),
@@ -180,6 +182,7 @@ class WA_Message {
         );
 
         if ( is_wp_error( $response ) ) {
+            error_log( "[WhatsApp] API Connection Error: " . $response->get_error_message() );
             return new WP_Error( 'api_error', __( 'Failed to call message API.', 'whatsapp-connector' ) );
         }
 
@@ -189,9 +192,15 @@ class WA_Message {
         $curl_command = "curl -X POST '{$api_url}' \\\n"
             . "-H 'Authorization: Bearer {$token}' \\\n"
             . "-H 'Content-Type: application/json' \\\n"
+            . "-H 'businessId: " . get_option( 'wa_business_id' ) . "' \\\n"
+            . "-H 'userId: " . get_option( 'wa_user_id' ) . "' \\\n"
             . "-d '" . wp_json_encode( $body ) . "'";
-
         // Debug logging.
+        error_log( "[WhatsApp] API URL: " . $api_url );
+        error_log( "[WhatsApp] Request Body: " . wp_json_encode( $body ) );
+        error_log( "[WhatsApp] cURL Command:\n" . $curl_command );
+        error_log( "[WhatsApp] Response Code: " . $response_code );
+        error_log( "[WhatsApp] Response Body: " . $response_body );
         error_log( '--------------------------Start ' . $flag . '--------------------------' );
         error_log( print_r( $body, true ) );
         error_log( wp_json_encode( $body ) );
