@@ -45,6 +45,16 @@ class WA_Message {
 
         $api_url = get_option( 'wa_message_api_url' );
 
+        global $wpdb;
+        $table_templates = $wpdb->prefix . 'azguards_whatsapp_templates';
+        $template_status = $wpdb->get_var( $wpdb->prepare( "SELECT status FROM {$table_templates} WHERE template_id = %s", $template_id ) );
+
+        if ( $template_status && strtoupper( $template_status ) === 'PENDING' ) {
+            error_log( "[WhatsApp] WARNING: Template '{$template_id}' is still PENDING approval. Message sending may fail." );
+        } elseif ( $template_status && strtoupper( $template_status ) !== 'APPROVED' ) {
+            error_log( "[WhatsApp] ERROR: Template '{$template_id}' is not APPROVED (Status: " . strtoupper( $template_status ) . "). Message delivery is likely to fail." );
+        }
+
         $converted_placeholder_values = array();
         foreach ( $template_variables as $key => $value ) {
             $converted_placeholder_values[] = array(
@@ -65,24 +75,35 @@ class WA_Message {
                 'headers' => array(
                     'Authorization' => 'Bearer ' . $token,
                     'Content-Type'  => 'application/json',
-                    'businessId'    => '18462116-8abf-4960-80b2-dd6c76e2532c',
-                    'userId'        => 'a008d8b8-bc54-4e43-9a62-67b3c1b546f3',
+                    'businessId'    => get_option( 'wa_business_id' ),
+                    'userId'        => get_option( 'wa_user_id' ),
                 ),
                 'body'    => wp_json_encode( $body ),
             )
         );
 
         if ( is_wp_error( $response ) ) {
+            error_log( "[WhatsApp] API Connection Error: " . $response->get_error_message() );
             return new WP_Error( 'api_error', __( 'Failed to call message API.', 'whatsapp-connector' ) );
         }
 
         $response_body = wp_remote_retrieve_body( $response );
+        $response_code = wp_remote_retrieve_response_code( $response );
+
+        $curl_command = "curl -X POST '{$api_url}' \\\n"
+            . "-H 'Authorization: Bearer {$token}' \\\n"
+            . "-H 'Content-Type: application/json' \\\n"
+            . "-H 'businessId: " . get_option( 'wa_business_id' ) . "' \\\n"
+            . "-H 'userId: " . get_option( 'wa_user_id' ) . "' \\\n"
+            . "-d '" . wp_json_encode( $body ) . "'";
 
         // Debug logging.
         error_log( '--------------------------Start ' . $flag . '--------------------------' );
-        error_log( print_r( $body, true ) );
-        error_log( wp_json_encode( $body ) );
-        error_log( print_r( json_decode( $response_body, true ), true ) );
+        error_log( "[WhatsApp] API URL: " . $api_url );
+        error_log( "[WhatsApp] Request Body: " . wp_json_encode( $body ) );
+        error_log( "[WhatsApp] cURL Command:\n" . $curl_command );
+        error_log( "[WhatsApp] Response Code: " . $response_code );
+        error_log( "[WhatsApp] Response Body: " . $response_body );
         error_log( '--------------------------End ' . $flag . '--------------------------' );
 
         return json_decode( $response_body, true );
