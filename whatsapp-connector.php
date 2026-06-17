@@ -12,6 +12,7 @@ define( 'WC_WHATSAPP_CONNECTOR_PATH', plugin_dir_path( __FILE__ ) );
 
 require_once plugin_dir_path( __FILE__ ) . 'includes/wc-defaults.php';
 require_once plugin_dir_path( __FILE__ ) . 'includes/wc-auth.php';
+require_once plugin_dir_path( __FILE__ ) . 'includes/wc-cron.php';
 require_once plugin_dir_path( __FILE__ ) . 'includes/wc-templates.php';
 require_once plugin_dir_path( __FILE__ ) . 'includes/wc-contact.php';
 require_once plugin_dir_path( __FILE__ ) . 'includes/wc-customer-sync.php';
@@ -79,6 +80,11 @@ add_action(
 function whatsapp_connector_plugin_activation() {
     do_action( 'whatsapp_connector_plugin_default_options' );
     WA_Database::create_tables();
+
+    // Schedule initial crons
+    if ( function_exists( 'wa_reschedule_crons' ) ) {
+        wa_reschedule_crons();
+    }
 }
 register_activation_hook( __FILE__, 'whatsapp_connector_plugin_activation' );
 

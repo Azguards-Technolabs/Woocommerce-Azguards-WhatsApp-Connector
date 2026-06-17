@@ -243,6 +243,113 @@ function wa_get_synced_contacts_handler() {
 }
 
 /**
+ * Core function to sync campaign statuses from the external Meta Scheduler API.
+ *
+ * @return int|WP_Error Number of synced campaigns or WP_Error on failure.
+ */
+if ( ! function_exists( 'wa_sync_campaigns' ) ) :
+    function wa_sync_campaigns() {
+        error_log( "[WA Campaign Sync] Starting campaign sync execution." );
+
+        global $wpdb;
+        $campaign_table = $wpdb->prefix . 'azguards_whatsapp_campaigns';
+        $template_table = $wpdb->prefix . 'azguards_whatsapp_templates';
+
+        if ( ! function_exists( 'wa_get_valid_token' ) ) {
+            require_once plugin_dir_path( __FILE__ ) . 'wc-templates.php';
+        }
+
+        $token = wa_get_valid_token();
+        if ( is_wp_error( $token ) ) {
+            error_log( "[WA Campaign Sync] Authentication failed: " . $token->get_error_message() );
+            return $token;
+        }
+
+        $api_base     = rtrim( get_option( 'wa_template_api_url', 'https://whatatalk-api.azguardstech.com' ), '/' );
+        $api_url      = $api_base . '/scheduler-service/api/v1/schedule';
+        $synced_count = 0;
+
+        // Fetch all remote campaigns (implementing retries)
+        $response = null;
+        for ( $i = 0; $i < 3; $i++ ) {
+            error_log( "[WA Campaign Sync] Fetching remote campaigns. Attempt " . ($i+1) . ". URL: $api_url" );
+            $response = wp_remote_get( $api_url, [
+                'headers' => [
+                    'Authorization' => 'Bearer ' . $token,
+                    'Content-Type'  => 'application/json',
+                ],
+                'timeout' => 30,
+            ] );
+
+            if ( ! is_wp_error( $response ) && wp_remote_retrieve_response_code( $response ) === 200 ) {
+                break;
+            }
+            sleep( 1 );
+        }
+
+        if ( is_wp_error( $response ) ) {
+            error_log( "[WA Campaign Sync] API Request Error: " . $response->get_error_message() );
+            return $response;
+        }
+
+        $code = wp_remote_retrieve_response_code( $response );
+        $body = wp_remote_retrieve_body( $response );
+        error_log( "[WA Campaign Sync] API Response (HTTP $code): " . substr($body, 0, 1000) );
+
+        if ( $code !== 200 ) {
+            return new WP_Error( 'wa_api_error', "API returned HTTP $code" );
+        }
+
+        $api_data = json_decode( $body, true );
+        $remote_campaigns = $api_data['result']['data'] ?? $api_data['data'] ?? [];
+
+        if ( empty( $remote_campaigns ) ) {
+            error_log( "[WA Campaign Sync] No campaigns found on provider." );
+            return 0;
+        }
+
+        foreach ( $remote_campaigns as $remote_camp ) {
+            $scheduler_id = $remote_camp['id'] ?? null;
+            if ( ! $scheduler_id ) continue;
+
+            $remote_status = $remote_camp['status'] ?? 'SCHEDULED';
+            $remote_name   = $remote_camp['trigger_config']['description'] ?? 'Unnamed Remote Campaign';
+
+            // Try to find remote template ID
+            $remote_template_id = $remote_camp['job_data']['templateId'] ?? null;
+
+            $existing = $wpdb->get_row( $wpdb->prepare( "SELECT campaign_id, status FROM $campaign_table WHERE scheduler_id = %s", $scheduler_id ) );
+
+            if ( $existing ) {
+                if ( $existing->status !== $remote_status ) {
+                    $wpdb->update( $campaign_table, [ 'status' => $remote_status ], [ 'campaign_id' => $existing->campaign_id ] );
+                    $synced_count++;
+                }
+            } else {
+                // Insert new remote campaign
+                $template_entity_id = 0;
+                if ( $remote_template_id ) {
+                    $template_entity_id = (int) $wpdb->get_var( $wpdb->prepare( "SELECT entity_id FROM $template_table WHERE template_id = %s", $remote_template_id ) );
+                }
+
+                $wpdb->insert( $campaign_table, [
+                    'campaign_name'      => $remote_name,
+                    'template_entity_id' => $template_entity_id,
+                    'target_type'        => 'remote',
+                    'scheduler_id'       => $scheduler_id,
+                    'status'             => $remote_status,
+                    'created_at'         => current_time( 'mysql' ),
+                ] );
+                $synced_count++;
+            }
+        }
+
+        error_log( "[WA Campaign Sync] Sync completed. Processed $synced_count campaigns." );
+        return $synced_count;
+    }
+endif;
+
+/**
  * AJAX: Sync campaign statuses from the external Meta Scheduler API.
  */
 add_action( 'wp_ajax_wa_sync_campaigns', 'wa_sync_campaigns_handler' );
@@ -253,60 +360,13 @@ function wa_sync_campaigns_handler() {
 
     check_ajax_referer( 'wa_sync_campaigns', 'security' );
 
-    global $wpdb;
-    $table = $wpdb->prefix . 'azguards_whatsapp_campaigns';
+    $result = wa_sync_campaigns();
 
-    $campaigns = $wpdb->get_results(
-        "SELECT * FROM $table WHERE scheduler_id IS NOT NULL AND status NOT IN ('COMPLETED', 'FAILED')"
-    );
-
-    if ( empty( $campaigns ) ) {
-        wp_send_json_success( __( 'All campaigns are up to date.', 'whatsapp-connector' ) );
+    if ( is_wp_error( $result ) ) {
+        wp_send_json_error( $result->get_error_message() );
     }
 
-    if ( ! function_exists( 'wa_get_valid_token' ) ) {
-        require_once plugin_dir_path( __FILE__ ) . 'wc-templates.php';
-    }
-
-    $token = wa_get_valid_token();
-    if ( is_wp_error( $token ) ) {
-        wp_send_json_error( __( 'Failed to retrieve access token.', 'whatsapp-connector' ) );
-    }
-
-    $api_base     = rtrim( get_option( 'wa_template_api_url', 'https://whatatalk-api.azguardstech.com' ), '/' );
-    $synced_count = 0;
-
-    foreach ( $campaigns as $camp ) {
-        $url      = $api_base . '/scheduler-service/api/v1/schedule/' . $camp->scheduler_id;
-        $response = wp_remote_get( $url, [
-            'headers' => [
-                'Authorization' => 'Bearer ' . $token,
-                'Content-Type'  => 'application/json',
-            ],
-            'timeout' => 15,
-        ] );
-
-        if ( is_wp_error( $response ) ) {
-            continue;
-        }
-
-        $code = wp_remote_retrieve_response_code( $response );
-        if ( $code >= 200 && $code < 300 ) {
-            $api_data        = json_decode( wp_remote_retrieve_body( $response ), true );
-            $external_status = $api_data['result']['status'] 
-                ?? $api_data['data']['status'] 
-                ?? $api_data['result']['data']['status'] 
-                ?? $api_data['status'] 
-                ?? null;
-
-            if ( $external_status && $external_status !== $camp->status ) {
-                $wpdb->update( $table, [ 'status' => $external_status ], [ 'campaign_id' => $camp->campaign_id ] );
-                $synced_count++;
-            }
-        }
-    }
-
-    wp_send_json_success( sprintf( __( 'Synced %d campaign(s) from Meta API.', 'whatsapp-connector' ), $synced_count ) );
+    wp_send_json_success( sprintf( __( 'Synced %d campaign(s) from Meta API.', 'whatsapp-connector' ), $result ) );
 }
 
 /**

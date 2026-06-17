@@ -153,85 +153,92 @@ if ( ! function_exists( 'wa_get_template_sync_next_url' ) ) :
 endif;
 
 /**
- * AJAX: Sync templates from API to local database.
+ * Core function to sync templates from API to local database.
+ *
+ * @return int|WP_Error Number of synced templates or WP_Error on failure.
  */
-add_action( 'wp_ajax_wa_sync_templates', 'wa_sync_templates_handler' );
+if ( ! function_exists( 'wa_sync_templates' ) ) :
+    function wa_sync_templates() {
+        error_log( "[WA Sync] Starting template sync execution." );
 
-if ( ! function_exists( 'wa_sync_templates_handler' ) ) :
-    /**
-     * Handle AJAX request to sync templates.
-     */
-    function wa_sync_templates_handler() {
-        if ( ! current_user_can( 'manage_woocommerce' ) ) {
-            wp_send_json_error( __( 'Unauthorized', 'whatsapp-connector' ) );
-        }
-
-        check_ajax_referer( 'wa_sync_templates', 'security' );
-
-        $token = get_transient( 'wa_access_token' );
-        if ( ! $token ) {
-            $data = WA_Auth::get_token();
-            if ( is_wp_error( $data ) ) {
-                wp_send_json_error( __( 'Authentication failed.', 'whatsapp-connector' ) );
-            }
-            $token = $data['access_token'] ?? '';
+        $token = wa_get_valid_token();
+        if ( is_wp_error( $token ) ) {
+            error_log( "[WA Sync] Authentication failed: " . $token->get_error_message() );
+            return $token;
         }
 
         $api_base_url = rtrim( get_option( 'wa_template_api_url', 'https://whatatalk-api.azguardstech.com/' ), '/' );
-
-        // Log the API URL for debugging. DO NOT log the token.
-        error_log( 'WA_API_URL: ' . wa_get_template_list_page_url( $api_base_url, 0, 100 ) );
-
-        $business_id = get_option( 'wa_business_id' );
-        $user_id     = get_option( 'wa_user_id' );
+        $business_id  = get_option( 'wa_business_id' );
+        $user_id      = get_option( 'wa_user_id' );
 
         if ( empty( $business_id ) || empty( $user_id ) ) {
-            // Force a token refresh to extract business/user IDs
+            error_log( "[WA Sync] Business ID or User ID missing. Attempting refresh." );
             $auth_data = WA_Auth::get_token();
             if ( is_wp_error( $auth_data ) ) {
-                wp_send_json_error( __( 'Could not retrieve business or user IDs. Please check credentials.', 'whatsapp-connector' ) );
+                 return new WP_Error( 'wa_sync_config_error', __( 'Could not retrieve business or user IDs.', 'whatsapp-connector' ) );
             }
             $business_id = get_option( 'wa_business_id' );
             $user_id     = get_option( 'wa_user_id' );
-            $token       = $auth_data['access_token'] ?? '';
+            $token       = $auth_data['access_token'] ?? $token;
         }
 
         global $wpdb;
         $table_name = $wpdb->prefix . 'azguards_whatsapp_templates';
 
         // Ensure table exists and schema is current.
-        WA_Database::create_tables();
+        if ( class_exists( 'WA_Database' ) ) {
+            WA_Database::create_tables();
+        }
 
         $synced_count       = 0;
         $page_count         = 0;
         $previous_first_id  = null;
         $next_url           = wa_get_template_list_page_url( $api_base_url, 0, 100 );
 
-        error_log( "[WA Sync] Starting template sync. Initial URL: $next_url" );
-
         while ( $next_url ) {
             $page_count++;
-            error_log( "[WA Sync] Fetching page $page_count. URL: $next_url" );
 
-            $response = wp_remote_get(
-                $next_url,
-                array(
-                    'headers' => array(
-                        'Authorization' => 'Bearer ' . $token,
-                        'businessId'    => $business_id,
-                        'userId'        => $user_id,
-                    ),
-                    'timeout' => 30,
-                )
-            );
+            // Fetch templates with retries
+            $response = null;
+            for ( $i = 0; $i < 3; $i++ ) {
+                error_log( "[WA Sync] Fetching page $page_count (Attempt " . ($i+1) . "). URL: $next_url" );
+                $response = wp_remote_get(
+                    $next_url,
+                    array(
+                        'headers' => array(
+                            'Authorization' => 'Bearer ' . $token,
+                            'businessId'    => $business_id,
+                            'userId'        => $user_id,
+                        ),
+                        'timeout' => 30,
+                    )
+                );
+
+                if ( ! is_wp_error( $response ) && wp_remote_retrieve_response_code( $response ) === 200 ) {
+                    break;
+                }
+                sleep( 1 );
+            }
 
             if ( is_wp_error( $response ) ) {
-                error_log( "WA_SYNC_ERROR: " . $response->get_error_message() );
-                break;
+                error_log( "[WA Sync] API Request Error: " . $response->get_error_message() );
+                return $response;
             }
-            
+
+            $response_code = wp_remote_retrieve_response_code( $response );
+            if ( $response_code >= 400 ) {
+                $error_body = wp_remote_retrieve_body( $response );
+                error_log( "[WA Sync] API Error (HTTP $response_code): $error_body" );
+                return new WP_Error( 'wa_sync_api_error', sprintf( __( 'API returned HTTP %d', 'whatsapp-connector' ), $response_code ) );
+            }
+
             $body = wp_remote_retrieve_body( $response );
             $data = json_decode( $body, true );
+
+            if ( ! $data ) {
+                error_log( "[WA Sync] Invalid API response (not JSON)." );
+                return new WP_Error( 'wa_sync_invalid_json', __( 'Invalid API response.', 'whatsapp-connector' ) );
+            }
 
             $templates_page = $data['result']['data'] ?? $data['Result']['data'] ?? null;
 
@@ -246,8 +253,6 @@ if ( ! function_exists( 'wa_sync_templates_handler' ) ) :
                 break;
             }
             $previous_first_id = $first_id;
-
-            error_log( '[WA Sync] Found ' . count( $templates_page ) . " templates in page $page_count." );
 
             foreach ( $templates_page as $template ) {
                 $template_id   = $template['id'];
@@ -322,15 +327,7 @@ if ( ! function_exists( 'wa_sync_templates_handler' ) ) :
                 $synced_count++;
             }
 
-            // Handle pagination (cursor, metadata, or full-page fallback).
             $next_url = wa_get_template_sync_next_url( $api_base_url, $data, $next_url, $page_count, count( $templates_page ) );
-
-            if ( $next_url ) {
-                error_log( "[WA Sync] Next page URL: $next_url" );
-            } else {
-                $paging = ( $data['result'] ?? $data['Result'] ?? array() )['paging'] ?? array();
-                error_log( '[WA Sync] No more pages. Paging metadata: ' . wp_json_encode( $paging ) );
-            }
 
             // Limit loop safety
             if ( $synced_count > 1000 ) {
@@ -339,13 +336,38 @@ if ( ! function_exists( 'wa_sync_templates_handler' ) ) :
             }
         }
 
-        error_log( "[WA Sync] Sync completed. Total pages: $page_count, Total templates: $synced_count" );
+        error_log( "[WA Sync] Sync completed successfully. Total templates: $synced_count" );
+        return $synced_count;
+    }
+endif;
 
-        if ( $synced_count === 0 ) {
+/**
+ * AJAX: Sync templates from API to local database.
+ */
+add_action( 'wp_ajax_wa_sync_templates', 'wa_sync_templates_handler' );
+
+if ( ! function_exists( 'wa_sync_templates_handler' ) ) :
+    /**
+     * Handle AJAX request to sync templates.
+     */
+    function wa_sync_templates_handler() {
+        if ( ! current_user_can( 'manage_woocommerce' ) ) {
+            wp_send_json_error( __( 'Unauthorized', 'whatsapp-connector' ) );
+        }
+
+        check_ajax_referer( 'wa_sync_templates', 'security' );
+
+        $result = wa_sync_templates();
+
+        if ( is_wp_error( $result ) ) {
+            wp_send_json_error( $result->get_error_message() );
+        }
+
+        if ( $result === 0 ) {
             wp_send_json_error( __( 'No templates found or synchronization failed.', 'whatsapp-connector' ) );
         }
 
-        wp_send_json_success( sprintf( __( 'Successfully synced %d templates.', 'whatsapp-connector' ), $synced_count ) );
+        wp_send_json_success( sprintf( __( 'Successfully synced %d templates.', 'whatsapp-connector' ), $result ) );
     }
 endif;
 
