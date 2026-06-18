@@ -67,8 +67,8 @@ if ( $edit_id > 0 ) {
         
         $media_handle_data = json_decode($tpl['media_handle'] ?? '', true);
         if ( is_array($media_handle_data) && !empty($media_handle_data) ) {
-            $saved_header_handle = $media_handle_data['document_id'] ?? '';
-            $saved_header_url = $media_handle_data['preview_link'] ?? '';
+            $saved_header_handle = $media_handle_data['document_id'] ?? $media_handle_data['id'] ?? $media_handle_data['handle'] ?? '';
+            $saved_header_url    = $media_handle_data['preview_link'] ?? $media_handle_data['url'] ?? $media_handle_data['link'] ?? '';
         } else {
             $saved_header_handle = $tpl['media_handle'] ?? ''; // Fallback
         }
