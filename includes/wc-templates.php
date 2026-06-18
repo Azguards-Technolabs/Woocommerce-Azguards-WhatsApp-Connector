@@ -284,8 +284,28 @@ if ( ! function_exists( 'wa_sync_templates' ) ) :
                         }
                         if ( 'HEADER' === $component['componentType'] ) {
                             $header_format = $component['componentFormat'] ?? '';
-                            if ( in_array($header_format, ['IMAGE', 'VIDEO', 'DOCUMENT']) ) {
-                                $media_handle = wp_json_encode( $component['componentData'] );
+                            if ( in_array( $header_format, [ 'IMAGE', 'VIDEO', 'DOCUMENT' ] ) ) {
+                                $media_data = $component['componentData'] ?? [];
+                                if ( is_array( $media_data ) ) {
+                                    $m_id   = $media_data['id'] ?? $media_data['document_id'] ?? $media_data['docId'] ?? $media_data['handle'] ?? '';
+                                    $m_link = $media_data['previewLink'] ?? $media_data['preview_link'] ?? $media_data['link'] ?? $media_data['url'] ?? '';
+
+                                    // Fallback for Meta API structure if nested in example
+                                    if ( empty( $m_id ) && ! empty( $component['example']['header_handle'][0] ) ) {
+                                        $m_id = $component['example']['header_handle'][0];
+                                    }
+
+                                    $media_handle = wp_json_encode( [
+                                        'document_id'  => $m_id,
+                                        'preview_link' => $m_link,
+                                    ] );
+                                } else {
+                                    // If it's just a string, treat it as the ID
+                                    $media_handle = wp_json_encode( [
+                                        'document_id'  => $media_data,
+                                        'preview_link' => '',
+                                    ] );
+                                }
                             } else {
                                 $header_text = $component['componentData'] ?? '';
                             }
