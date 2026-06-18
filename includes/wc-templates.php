@@ -42,14 +42,14 @@ class WA_Templates {
             return array( '' => __( 'API URL not set', 'whatsapp-connector' ) );
         }
 
-        $business_id = '18462116-8abf-4960-80b2-dd6c76e2532c';
-        $user_id     = 'a008d8b8-bc54-4e43-9a62-67b3c1b546f3';
+        $business_id = get_option( 'wa_business_id' );
+        $user_id     = get_option( 'wa_user_id' );
 
         $response = wp_remote_get(
             $api_url,
             array(
                 'headers' => array(
-                    // 'Authorization' => 'Bearer ' . $token,
+                    'Authorization' => 'Bearer ' . $token,
                     'businessId' => $business_id,
                     'userId'     => $user_id,
                 ),
@@ -414,7 +414,18 @@ if ( ! function_exists( 'wa_save_builder_template_handler' ) ) :
         $body_template   = wp_unslash( $_POST['body_template'] ?? '' );
         $footer_template = sanitize_text_field( $_POST['footer_template'] ?? '' );
         $enable_buttons  = sanitize_text_field( $_POST['enable_buttons'] ?? 'yes' );
-        $buttons         = isset( $_POST['buttons'] ) && is_array( $_POST['buttons'] ) ? $_POST['buttons'] : [];
+
+        $buttons = [];
+        if ( isset( $_POST['buttons'] ) && is_array( $_POST['buttons'] ) ) {
+            $raw_buttons = wp_unslash( $_POST['buttons'] );
+            foreach ( $raw_buttons as $btn ) {
+                $buttons[] = [
+                    'type' => sanitize_text_field( $btn['type'] ?? 'URL' ),
+                    'text' => sanitize_text_field( $btn['text'] ?? '' ),
+                    'url'  => esc_url_raw( $btn['url'] ?? '' ),
+                ];
+            }
+        }
         
         $template_type   = strtoupper( sanitize_text_field( $_POST['template_type'] ?? 'TEXT' ) );
         $carousel_cards  = wp_unslash( $_POST['carousel_cards'] ?? '[]' );
@@ -1108,7 +1119,7 @@ if ( ! function_exists( 'wa_save_campaign_handler' ) ) :
             $wpdb->update( $table, $data, [ 'campaign_id' => $campaign_id ] );
             
             if ( $api_error ) {
-                wp_send_json_error( 'Saved locally but API update failed: ' . $api_error );
+                wp_send_json_error( __( 'Saved locally but API update failed: ', 'whatsapp-connector' ) . $api_error );
             } else {
                 wp_send_json_success( [ 'message' => __( 'Campaign updated successfully on Meta API.', 'whatsapp-connector' ), 'campaign_id' => $campaign_id ] );
             }
@@ -1156,7 +1167,7 @@ if ( ! function_exists( 'wa_save_campaign_handler' ) ) :
             }
 
             if ( $api_error ) {
-                wp_send_json_error( 'Saved locally but Meta API returned error: ' . $api_error );
+                wp_send_json_error( __( 'Saved locally but Meta API returned error: ', 'whatsapp-connector' ) . $api_error );
             } else {
                 wp_send_json_success( [ 'message' => __( 'Campaign created and scheduled on Meta API successfully.', 'whatsapp-connector' ), 'campaign_id' => $new_id ] );
             }
