@@ -112,9 +112,11 @@ jQuery(document).ready(function ($) {
             // Buttons
             if ($('#wa_enable_buttons').is(':checked')) {
                 var buttonsHTML = '';
-                $('.wa-button-item').each(function () {
-                    var btnText = $(this).find('.wa-button-text').val() || 'Button';
-                    buttonsHTML += '<div class="wa-preview-btn"><span class="wa-btn-icon">&#128279;</span> ' + btnText + '</div>';
+                $('.wa-button-item:visible').each(function () {
+                    var btnText = $(this).find('.wa-button-text').val();
+                    if (btnText) {
+                        buttonsHTML += '<div class="wa-preview-btn"><span class="wa-btn-icon">&#128279;</span> ' + btnText + '</div>';
+                    }
                 });
                 $('#preview_buttons').html(buttonsHTML).show();
             } else {
@@ -252,7 +254,7 @@ jQuery(document).ready(function ($) {
         custom_uploader.open();
     });
 
-    $(document).on('input', '.wa-button-text', updatePreview);
+    $(document).on('input', '.wa-button-text, .wa-button-url', updatePreview);
     $(document).on('change', '.wa-button-type', updatePreview);
 
     $('#wa_add_button').on('click', function () {

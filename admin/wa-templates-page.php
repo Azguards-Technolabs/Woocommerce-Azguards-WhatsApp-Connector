@@ -101,8 +101,8 @@ if ( ! is_array( $buttons ) ) {
 }
 
 wp_enqueue_media();
-wp_enqueue_style( 'wa-template-builder-css', plugins_url( '../assets/template-builder.css', __FILE__ ), array(), time() );
-wp_enqueue_script( 'wa-template-builder-js', plugins_url( '../assets/template-builder.js', __FILE__ ), array( 'jquery' ), time(), true );
+wp_enqueue_style( 'wa-template-builder-css', plugins_url( '../assets/template-builder.css', __FILE__ ), array(), WA_CONNECTOR_VERSION );
+wp_enqueue_script( 'wa-template-builder-js', plugins_url( '../assets/template-builder.js', __FILE__ ), array( 'jquery' ), WA_CONNECTOR_VERSION, true );
 ?>
 <div class="wrap wa-template-wrap">
     <h1 class="wp-heading-inline"><?php echo esc_html($page_title); ?></h1>
@@ -131,14 +131,14 @@ wp_enqueue_script( 'wa-template-builder-js', plugins_url( '../assets/template-bu
             <table class="form-table">
                 <tbody>
                     <tr>
-                        <th scope="row"><label for="wa_template_name">Template Name <span style="color:red;">*</span></label></th>
+                        <th scope="row"><label for="wa_template_name"><?php esc_html_e( 'Template Name', 'whatsapp-connector' ); ?> <span style="color:red;">*</span></label></th>
                         <td>
                             <input type="text" id="wa_template_name" class="regular-text" value="<?php echo esc_attr($saved_template_name ?? 'My Template'); ?>" />
-                            <p class="description">The template name must be unique and follow specific formatting rules (lowercase, numbers, underscores).</p>
+                            <p class="description"><?php esc_html_e( 'The template name must be unique and follow specific formatting rules (lowercase, numbers, underscores).', 'whatsapp-connector' ); ?></p>
                         </td>
                     </tr>
                     <tr>
-                        <th scope="row"><label for="wa_template_type">Template Type <span style="color:red;">*</span></label></th>
+                        <th scope="row"><label for="wa_template_type"><?php esc_html_e( 'Template Type', 'whatsapp-connector' ); ?> <span style="color:red;">*</span></label></th>
                         <td>
                             <select id="wa_template_type" class="regular-text">
                                 <?php
@@ -151,28 +151,28 @@ wp_enqueue_script( 'wa-template-builder-js', plugins_url( '../assets/template-bu
                                     $combined_type = 'TEXT';
                                 }
                                 ?>
-                                <option value="TEXT" <?php selected($combined_type, 'TEXT'); ?>>Text</option>
-                                <option value="IMAGE" <?php selected($combined_type, 'IMAGE'); ?>>Image</option>
-                                <option value="VIDEO" <?php selected($combined_type, 'VIDEO'); ?>>Video</option>
-                                <option value="DOCUMENT" <?php selected($combined_type, 'DOCUMENT'); ?>>Document</option>
-                                <option value="CAROUSEL" <?php selected($combined_type, 'CAROUSEL'); ?>>Carousel</option>
+                                <option value="TEXT" <?php selected($combined_type, 'TEXT'); ?>><?php esc_html_e( 'Text', 'whatsapp-connector' ); ?></option>
+                                <option value="IMAGE" <?php selected($combined_type, 'IMAGE'); ?>><?php esc_html_e( 'Image', 'whatsapp-connector' ); ?></option>
+                                <option value="VIDEO" <?php selected($combined_type, 'VIDEO'); ?>><?php esc_html_e( 'Video', 'whatsapp-connector' ); ?></option>
+                                <option value="DOCUMENT" <?php selected($combined_type, 'DOCUMENT'); ?>><?php esc_html_e( 'Document', 'whatsapp-connector' ); ?></option>
+                                <option value="CAROUSEL" <?php selected($combined_type, 'CAROUSEL'); ?>><?php esc_html_e( 'Carousel', 'whatsapp-connector' ); ?></option>
                             </select>
                         </td>
                     </tr>
                     <tr id="wa_category_notice_row" style="display: none;">
                         <td colspan="2">
                              <div style="background: #fff8e1; border-left: 4px solid #ffca28; padding: 10px; margin-bottom: 5px;">
-                                <strong>Category: Marketing (Auto-set for Media Templates)</strong>
+                                <strong><?php esc_html_e( 'Category: Marketing (Auto-set for Media Templates)', 'whatsapp-connector' ); ?></strong>
                              </div>
                         </td>
                     </tr>
                     <tr>
-                        <th scope="row"><label for="wa_template_category">Template Category <span style="color:red;">*</span></label></th>
+                        <th scope="row"><label for="wa_template_category"><?php esc_html_e( 'Template Category', 'whatsapp-connector' ); ?> <span style="color:red;">*</span></label></th>
                         <td>
                             <select id="wa_template_category" class="regular-text">
-                                <option value="MARKETING" <?php selected($saved_category, 'MARKETING'); ?>>Marketing</option>
-                                <option value="UTILITY" <?php selected($saved_category, 'UTILITY'); ?>>Utility</option>
-                                <option value="AUTHENTICATION" <?php selected($saved_category, 'AUTHENTICATION'); ?>>Authentication</option>
+                                <option value="MARKETING" <?php selected($saved_category, 'MARKETING'); ?>><?php esc_html_e( 'Marketing', 'whatsapp-connector' ); ?></option>
+                                <option value="UTILITY" <?php selected($saved_category, 'UTILITY'); ?>><?php esc_html_e( 'Utility', 'whatsapp-connector' ); ?></option>
+                                <option value="AUTHENTICATION" <?php selected($saved_category, 'AUTHENTICATION'); ?>><?php esc_html_e( 'Authentication', 'whatsapp-connector' ); ?></option>
                             </select>
                         </td>
                     </tr>
@@ -250,48 +250,48 @@ wp_enqueue_script( 'wa-template-builder-js', plugins_url( '../assets/template-bu
                     </tr>
                     <tr class="wa-body-heading-row">
                         <td colspan="2" style="padding-left: 0;">
-                            <h3 style="border-bottom: 1px solid #ccc; padding-bottom: 10px; margin-top: 20px;">BODY (Required)</h3>
+                            <h3 style="border-bottom: 1px solid #ccc; padding-bottom: 10px; margin-top: 20px;"><?php esc_html_e( 'BODY (Required)', 'whatsapp-connector' ); ?></h3>
                         </td>
                     </tr>
                     <tr class="wa-standard-row">
-                        <th scope="row"><label for="wa_header_type">Header Type</label></th>
+                        <th scope="row"><label for="wa_header_type"><?php esc_html_e( 'Header Type', 'whatsapp-connector' ); ?></label></th>
                         <td>
                             <select id="wa_header_type" class="regular-text">
-                                <option value="TEXT" <?php selected($saved_header_type, 'TEXT'); ?>>Text</option>
-                                <option value="IMAGE" <?php selected($saved_header_type, 'IMAGE'); ?>>Image</option>
-                                <option value="VIDEO" <?php selected($saved_header_type, 'VIDEO'); ?>>Video</option>
-                                <option value="DOCUMENT" <?php selected($saved_header_type, 'DOCUMENT'); ?>>Document</option>
+                                <option value="TEXT" <?php selected($saved_header_type, 'TEXT'); ?>><?php esc_html_e( 'Text', 'whatsapp-connector' ); ?></option>
+                                <option value="IMAGE" <?php selected($saved_header_type, 'IMAGE'); ?>><?php esc_html_e( 'Image', 'whatsapp-connector' ); ?></option>
+                                <option value="VIDEO" <?php selected($saved_header_type, 'VIDEO'); ?>><?php esc_html_e( 'Video', 'whatsapp-connector' ); ?></option>
+                                <option value="DOCUMENT" <?php selected($saved_header_type, 'DOCUMENT'); ?>><?php esc_html_e( 'Document', 'whatsapp-connector' ); ?></option>
                             </select>
                         </td>
                     </tr>
                     <tr id="wa_header_text_row" class="wa-standard-row">
-                        <th scope="row"><label for="wa_header_text">Header Text</label></th>
+                        <th scope="row"><label for="wa_header_text"><?php esc_html_e( 'Header Text', 'whatsapp-connector' ); ?></label></th>
                         <td>
                             <input type="text" id="wa_header_text" class="large-text" value="<?php echo esc_attr($saved_header_text); ?>" maxlength="60" />
                         </td>
                     </tr>
                     <tr id="wa_header_media_row" class="wa-standard-row" style="<?php echo (in_array($saved_header_type, ['IMAGE', 'VIDEO', 'DOCUMENT'])) ? '' : 'display:none;'; ?>">
-                        <th scope="row"><label>Header Media</label></th>
+                        <th scope="row"><label><?php esc_html_e( 'Header Media', 'whatsapp-connector' ); ?></label></th>
                         <td>
                             <input type="hidden" id="wa_header_media_handle" value="<?php echo esc_attr($saved_header_handle); ?>">
                             <input type="hidden" id="wa_header_media_url" value="<?php echo esc_url($saved_header_url); ?>">
-                            <button type="button" class="button" id="wa_upload_media_btn">Choose Media</button>
+                            <button type="button" class="button" id="wa_upload_media_btn"><?php esc_html_e( 'Choose Media', 'whatsapp-connector' ); ?></button>
                             <span id="wa_media_status" style="margin-left: 10px;">
-                                <?php echo $saved_header_handle ? 'Media exists' : 'No media selected'; ?>
+                                <?php echo $saved_header_handle ? esc_html__( 'Media exists', 'whatsapp-connector' ) : esc_html__( 'No media selected', 'whatsapp-connector' ); ?>
                             </span>
                             <div id="wa_media_preview" style="margin-top: 10px; max-width: 200px;">
                                 <?php if ($saved_header_url): ?>
-                                    <a href="<?php echo esc_url($saved_header_url); ?>" target="_blank">Preview Uploaded File</a>
+                                    <a href="<?php echo esc_url($saved_header_url); ?>" target="_blank"><?php esc_html_e( 'Preview Uploaded File', 'whatsapp-connector' ); ?></a>
                                 <?php endif; ?>
                             </div>
                         </td>
                     </tr>
                     <tr class="wa-standard-row">
                         <th>
-                            <label for="wa_message_body">Body Content <span style="color:red;">*</span></label>
+                            <label for="wa_message_body"><?php esc_html_e( 'Body Content', 'whatsapp-connector' ); ?> <span style="color:red;">*</span></label>
                             <br>
                             <div class="wa-variable-inserter" style="position: relative; display: inline-block;">
-                                <button type="button" class="button" id="wa_insert_variable">Insert Variable {{}}</button>
+                                <button type="button" class="button" id="wa_insert_variable"><?php esc_html_e( 'Insert Variable {{}}', 'whatsapp-connector' ); ?></button>
                                 
                                 <div class="wa-premium-variable-menu" id="wa_variable_menu" style="display: none;">
                                     <style>
@@ -386,19 +386,19 @@ wp_enqueue_script( 'wa-template-builder-js', plugins_url( '../assets/template-bu
                         </td>
                     </tr>
                     <tr class="wa-standard-row">
-                        <th scope="row"><label for="wa_footer_text">Footer</label></th>
+                        <th scope="row"><label for="wa_footer_text"><?php esc_html_e( 'Footer', 'whatsapp-connector' ); ?></label></th>
                         <td>
                             <input type="text" id="wa_footer_text" class="large-text" value="<?php echo esc_attr($saved_footer); ?>" maxlength="60" />
                         </td>
                     </tr>
                     <tr class="wa-standard-row">
-                        <th scope="row"><label>Enable Buttons</label></th>
+                        <th scope="row"><label><?php esc_html_e( 'Enable Buttons', 'whatsapp-connector' ); ?></label></th>
                         <td>
                             <label class="wa-switch">
                               <input type="checkbox" id="wa_enable_buttons" <?php checked($saved_enable_buttons, 'yes'); ?>>
                               <span class="wa-slider round"></span>
                             </label>
-                            <span class="wa-switch-label">Yes</span>
+                            <span class="wa-switch-label"><?php esc_html_e( 'Yes', 'whatsapp-connector' ); ?></span>
                         </td>
                     </tr>
                     <tr id="wa_buttons_row" class="wa-standard-row">
@@ -407,31 +407,31 @@ wp_enqueue_script( 'wa-template-builder-js', plugins_url( '../assets/template-bu
                                 <?php foreach ($buttons as $btn) : ?>
                                 <div class="wa-button-item" style="display:flex; gap:8px; margin-bottom:8px; align-items:center;">
                                     <select class="wa-button-type">
-                                        <option value="URL" <?php selected($btn['type'] ?? 'URL', 'URL'); ?>>URL (Website Link)</option>
-                                        <option value="QUICK_REPLY" <?php selected($btn['type'] ?? 'URL', 'QUICK_REPLY'); ?>>Quick Reply</option>
-                                        <option value="PHONE_NUMBER" <?php selected($btn['type'] ?? 'URL', 'PHONE_NUMBER'); ?>>Phone Number (Call Button)</option>
-                                        <option value="COPY_CODE" <?php selected($btn['type'] ?? 'URL', 'COPY_CODE'); ?>>Copy Coupon Code (COPY_CODE)</option>
+                                        <option value="URL" <?php selected($btn['type'] ?? 'URL', 'URL'); ?>><?php esc_html_e( 'URL (Website Link)', 'whatsapp-connector' ); ?></option>
+                                        <option value="QUICK_REPLY" <?php selected($btn['type'] ?? 'URL', 'QUICK_REPLY'); ?>><?php esc_html_e( 'Quick Reply', 'whatsapp-connector' ); ?></option>
+                                        <option value="PHONE_NUMBER" <?php selected($btn['type'] ?? 'URL', 'PHONE_NUMBER'); ?>><?php esc_html_e( 'Phone Number (Call Button)', 'whatsapp-connector' ); ?></option>
+                                        <option value="COPY_CODE" <?php selected($btn['type'] ?? 'URL', 'COPY_CODE'); ?>><?php esc_html_e( 'Copy Coupon Code (COPY_CODE)', 'whatsapp-connector' ); ?></option>
                                     </select>
-                                    <input type="text" class="wa-button-text" value="<?php echo esc_attr($btn['text'] ?? ''); ?>" placeholder="Button Label" style="width:160px;" />
-                                    <input type="text" class="wa-button-url" value="<?php echo esc_attr($btn['url'] ?? $btn['button_url'] ?? ''); ?>" placeholder="URL / Phone / Coupon" style="flex:1;" />
-                                    <button type="button" class="button wa-remove-button">Remove</button>
+                                    <input type="text" class="wa-button-text" value="<?php echo esc_attr($btn['text'] ?? ''); ?>" placeholder="<?php esc_attr_e( 'Button Label', 'whatsapp-connector' ); ?>" style="width:160px;" />
+                                    <input type="text" class="wa-button-url" value="<?php echo esc_attr($btn['url'] ?? $btn['button_url'] ?? ''); ?>" placeholder="<?php esc_attr_e( 'URL / Phone / Coupon', 'whatsapp-connector' ); ?>" style="flex:1;" />
+                                    <button type="button" class="button wa-remove-button"><?php esc_html_e( 'Remove', 'whatsapp-connector' ); ?></button>
                                 </div>
                                 <?php endforeach; ?>
                                 <!-- Hidden template for JS cloning -->
                                 <div class="wa-button-item" style="display:none; gap:8px; margin-bottom:8px; align-items:center;">
                                     <select class="wa-button-type">
-                                        <option value="URL">URL (Website Link)</option>
-                                        <option value="QUICK_REPLY">Quick Reply</option>
-                                        <option value="PHONE_NUMBER">Phone Number (Call Button)</option>
-                                        <option value="COPY_CODE">Copy Coupon Code (COPY_CODE)</option>
+                                        <option value="URL"><?php esc_html_e( 'URL (Website Link)', 'whatsapp-connector' ); ?></option>
+                                        <option value="QUICK_REPLY"><?php esc_html_e( 'Quick Reply', 'whatsapp-connector' ); ?></option>
+                                        <option value="PHONE_NUMBER"><?php esc_html_e( 'Phone Number (Call Button)', 'whatsapp-connector' ); ?></option>
+                                        <option value="COPY_CODE"><?php esc_html_e( 'Copy Coupon Code (COPY_CODE)', 'whatsapp-connector' ); ?></option>
                                     </select>
-                                    <input type="text" class="wa-button-text" value="" placeholder="Button Label" style="width:160px;" />
-                                    <input type="text" class="wa-button-url" value="" placeholder="URL / Phone / Coupon" style="flex:1;" />
-                                    <button type="button" class="button wa-remove-button">Remove</button>
+                                    <input type="text" class="wa-button-text" value="" placeholder="<?php esc_attr_e( 'Button Label', 'whatsapp-connector' ); ?>" style="width:160px;" />
+                                    <input type="text" class="wa-button-url" value="" placeholder="<?php esc_attr_e( 'URL / Phone / Coupon', 'whatsapp-connector' ); ?>" style="flex:1;" />
+                                    <button type="button" class="button wa-remove-button"><?php esc_html_e( 'Remove', 'whatsapp-connector' ); ?></button>
                                 </div>
                             </div>
-                            <button type="button" class="button" id="wa_add_button" style="margin-top: 10px;">Add Button</button>
-                            <span class="description" style="margin-left: 10px;">Maximum 3 buttons allowed.</span>
+                            <button type="button" class="button" id="wa_add_button" style="margin-top: 10px;"><?php esc_html_e( 'Add Button', 'whatsapp-connector' ); ?></button>
+                            <span class="description" style="margin-left: 10px;"><?php esc_html_e( 'Maximum 3 buttons allowed.', 'whatsapp-connector' ); ?></span>
                         </td>
                     </tr>
                     <tr id="wa_carousel_row" style="display:none;">
@@ -450,13 +450,13 @@ wp_enqueue_script( 'wa-template-builder-js', plugins_url( '../assets/template-bu
             </table>
             
             <p class="submit">
-                <button type="button" class="button button-primary" id="wa_save_template">Save Template</button>
+                <button type="button" class="button button-primary" id="wa_save_template"><?php esc_html_e( 'Save Template', 'whatsapp-connector' ); ?></button>
             </p>
         </div>
 
         <!-- Right Side: Live Preview -->
         <div class="wa-live-preview">
-            <h3>Live Preview</h3>
+            <h3><?php esc_html_e( 'Live Preview', 'whatsapp-connector' ); ?></h3>
             <div class="wa-iphone-mockup">
                 <div class="wa-iphone-header">
                     <span class="wa-iphone-time">9:41</span>

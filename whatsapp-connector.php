@@ -4,10 +4,13 @@
  * Description:       Adds WhatsApp template configuration to WooCommerce settings.
  * Version:           1.0
  * Author:            Azguards Technolabs
+ * Text Domain:       whatsapp-connector
+ * Domain Path:       /languages
  */
 
 defined( 'ABSPATH' ) || exit;
 
+define( 'WA_CONNECTOR_VERSION', '1.0.0' );
 define( 'WC_WHATSAPP_CONNECTOR_PATH', plugin_dir_path( __FILE__ ) );
 
 require_once plugin_dir_path( __FILE__ ) . 'includes/wc-defaults.php';
@@ -92,8 +95,8 @@ register_activation_hook( __FILE__, 'whatsapp_connector_plugin_activation' );
  * Enqueue admin styles and scripts.
  */
 add_action( 'admin_enqueue_scripts', function () {
-    wp_enqueue_style( 'wa-connector-css', plugins_url( 'assets/admin.css', __FILE__ ) );
-    wp_enqueue_script( 'wa-connector-js', plugins_url( 'assets/admin.js', __FILE__ ), array( 'jquery' ), null, true );
+    wp_enqueue_style( 'wa-connector-css', plugins_url( 'assets/admin.css', __FILE__ ), array(), WA_CONNECTOR_VERSION );
+    wp_enqueue_script( 'wa-connector-js', plugins_url( 'assets/admin.js', __FILE__ ), array( 'jquery' ), WA_CONNECTOR_VERSION, true );
     wp_enqueue_style( 'select2', 'https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css' );
     wp_enqueue_script( 'select2', 'https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js', array( 'jquery' ), null, true );
 } );
