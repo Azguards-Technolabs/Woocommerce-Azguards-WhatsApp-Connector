@@ -26,7 +26,7 @@ require_once plugin_dir_path( __FILE__ ) . 'includes/wc-woocommerce-variables.ph
 require_once plugin_dir_path( __FILE__ ) . 'includes/wc-variables-configuration-table.php';
 require_once plugin_dir_path( __FILE__ ) . 'includes/wc-abandoned-cart.php';
 require_once plugin_dir_path( __FILE__ ) . 'includes/wc-queue-processor.php';
-require_once plugin_dir_path( __FILE__ ) . 'sendMessage/user-register.php';
+// user-register.php removed — User Registration WA notifications not part of Magento parity scope.
 require_once plugin_dir_path( __FILE__ ) . 'sendMessage/helper.php';
 require_once plugin_dir_path( __FILE__ ) . 'sendMessage/woocommerce-hooks.php';
 require_once plugin_dir_path( __FILE__ ) . 'admin/authentication/validate-credentials.php';
@@ -183,6 +183,30 @@ add_filter( 'submenu_file', function ( $submenu_file ) {
     }
     return $submenu_file;
 }, 9999 );
+
+/**
+ * Bulletproof JS fallback for sidebar highlighting since WooCommerce sometimes overrides PHP menu filters.
+ */
+add_action( 'admin_head', function () {
+    $current_page = isset( $_GET['page'] ) ? sanitize_text_field( wp_unslash( $_GET['page'] ) ) : '';
+    if ( $current_page === 'wa-template-builder' ) {
+        echo '<script>
+            jQuery(document).ready(function($) {
+                $("#toplevel_page_woocommerce").removeClass("wp-not-current-submenu").addClass("wp-has-current-submenu wp-menu-open");
+                $("#toplevel_page_woocommerce > a").removeClass("wp-not-current-submenu").addClass("wp-has-current-submenu wp-menu-open");
+                $("ul.wp-submenu a[href=\'admin.php?page=wa-templates-grid\']").parent("li").addClass("current");
+            });
+        </script>';
+    } elseif ( $current_page === 'wa-campaign-edit' ) {
+        echo '<script>
+            jQuery(document).ready(function($) {
+                $("#toplevel_page_woocommerce").removeClass("wp-not-current-submenu").addClass("wp-has-current-submenu wp-menu-open");
+                $("#toplevel_page_woocommerce > a").removeClass("wp-not-current-submenu").addClass("wp-has-current-submenu wp-menu-open");
+                $("ul.wp-submenu a[href=\'admin.php?page=wa-campaigns\']").parent("li").addClass("current");
+            });
+        </script>';
+    }
+} );
 
 /**
  * Register custom screens with WooCommerce so it doesn't collapse the menu

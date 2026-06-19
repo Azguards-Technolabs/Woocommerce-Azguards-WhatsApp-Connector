@@ -49,6 +49,7 @@ if ( $edit_id > 0 ) {
     $tpl = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table_name WHERE entity_id = %d", $edit_id), ARRAY_A);
     if ( $tpl ) {
         $saved_template_name = $tpl['template_name'];
+        $page_title = 'Edit Template - ' . $saved_template_name;
         $saved_category      = $tpl['category'] ?: 'MARKETING';
         $saved_language      = $tpl['language'] ?: 'en_US';
         // Fix for when template_type inadvertently contains header_format due to old bug
@@ -78,7 +79,10 @@ if ( $edit_id > 0 ) {
     if ( $page_id === 'wa-template-builder' && empty($_GET['hook']) ) {
         // It's a fresh manual create from WhatTack Templates grid. Keep defaults clean.
         $saved_template_type = 'STANDARD';
+        $page_title = 'Create Template';
     } else {
+        $page_title = 'Create Template - ' . (isset($titles[$hook_type]) ? $titles[$hook_type] : 'Template Builder');
+
         $saved_template_name = get_option( "wa_template_{$hook_type}_template_name", '' );
         $saved_category      = get_option( "wa_template_{$hook_type}_category", 'MARKETING' );
         $saved_language      = get_option( "wa_template_{$hook_type}_language", 'en_US' );
@@ -101,11 +105,13 @@ if ( ! is_array( $buttons ) ) {
 }
 
 wp_enqueue_media();
+wp_enqueue_style( 'wa-google-fonts-inter', 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap', array(), null );
 wp_enqueue_style( 'wa-template-builder-css', plugins_url( '../assets/template-builder.css', __FILE__ ), array(), WA_CONNECTOR_VERSION );
 wp_enqueue_script( 'wa-template-builder-js', plugins_url( '../assets/template-builder.js', __FILE__ ), array( 'jquery' ), WA_CONNECTOR_VERSION, true );
 ?>
 <div class="wrap wa-template-wrap">
     <h1 class="wp-heading-inline"><?php echo esc_html($page_title); ?></h1>
+    <a href="<?php echo esc_url( admin_url( 'admin.php?page=wa-templates-grid' ) ); ?>" class="page-title-action">&larr; Back to Templates</a>
     <h2 class="nav-tab-wrapper">
         <a href="#" class="nav-tab nav-tab-active">Template Builder</a>
     </h2>
@@ -121,10 +127,16 @@ wp_enqueue_script( 'wa-template-builder-js', plugins_url( '../assets/template-bu
         <!-- Left Side: Form Elements -->
         <div class="wa-builder-form">
             <div class="wa-status-bar">
-                <?php if ($edit_id > 0 && isset($tpl)): ?>
-                    <span>Status: <strong class="status-<?php echo esc_attr(strtolower($tpl['status'] ?? 'unknown')); ?>"><?php echo esc_html($tpl['status'] ?? 'UNKNOWN'); ?></strong> (<?php echo esc_html($tpl['template_id'] ?? 'No Meta ID'); ?>)</span>
+                <?php if ($edit_id > 0 && isset($tpl)):
+                    $st = strtolower($tpl['status'] ?? 'unknown');
+                    $st_icons = ['approved'=>'✅','rejected'=>'❌','pending'=>'⏳','local'=>'💾'];
+                    $st_icon  = $st_icons[$st] ?? '•';
+                ?>
+                    <span><?php echo $st_icon; ?> &nbsp;<strong class="status-<?php echo esc_attr($st); ?>"><?php echo esc_html(strtoupper($st)); ?></strong></span>
+                    <span style="color:#d1d5db">|</span>
+                    <span style="font-size:12px;color:#6b7280;font-family:monospace"><?php echo esc_html($tpl['template_id'] ?? '—'); ?></span>
                 <?php else: ?>
-                    <span>Status: <strong>NEW TEMPLATE</strong></span>
+                    <span>🆕 &nbsp;<strong>NEW TEMPLATE</strong></span>
                 <?php endif; ?>
             </div>
 
@@ -134,7 +146,7 @@ wp_enqueue_script( 'wa-template-builder-js', plugins_url( '../assets/template-bu
                         <th scope="row"><label for="wa_template_name"><?php esc_html_e( 'Template Name', 'whatsapp-connector' ); ?> <span style="color:red;">*</span></label></th>
                         <td>
                             <input type="text" id="wa_template_name" class="regular-text" value="<?php echo esc_attr($saved_template_name ?? 'My Template'); ?>" />
-                            <p class="description"><?php esc_html_e( 'The template name must be unique and follow specific formatting rules (lowercase, numbers, underscores).', 'whatsapp-connector' ); ?></p>
+                            <p class="description"><?php esc_html_e( 'Use a unique WhatsApp template key. Keep it lowercase and use only letters, numbers, and underscores, for example order_shipped_update.', 'whatsapp-connector' ); ?></p>
                         </td>
                     </tr>
                     <tr>
@@ -157,6 +169,7 @@ wp_enqueue_script( 'wa-template-builder-js', plugins_url( '../assets/template-bu
                                 <option value="DOCUMENT" <?php selected($combined_type, 'DOCUMENT'); ?>><?php esc_html_e( 'Document', 'whatsapp-connector' ); ?></option>
                                 <option value="CAROUSEL" <?php selected($combined_type, 'CAROUSEL'); ?>><?php esc_html_e( 'Carousel', 'whatsapp-connector' ); ?></option>
                             </select>
+                            <p class="description"><?php esc_html_e( 'Choose the message format to submit to WhatsApp. Text is for plain templates; Image, Video, and Document require header media; Carousel is for multi-card marketing templates.', 'whatsapp-connector' ); ?></p>
                         </td>
                     </tr>
                     <tr id="wa_category_notice_row" style="display: none;">
@@ -174,6 +187,7 @@ wp_enqueue_script( 'wa-template-builder-js', plugins_url( '../assets/template-bu
                                 <option value="UTILITY" <?php selected($saved_category, 'UTILITY'); ?>><?php esc_html_e( 'Utility', 'whatsapp-connector' ); ?></option>
                                 <option value="AUTHENTICATION" <?php selected($saved_category, 'AUTHENTICATION'); ?>><?php esc_html_e( 'Authentication', 'whatsapp-connector' ); ?></option>
                             </select>
+                            <p class="description"><?php esc_html_e( 'Marketing is used for promotional campaign templates. Utility is used for order and service updates. Authentication is used for OTP or login-code templates.', 'whatsapp-connector' ); ?></p>
                         </td>
                     </tr>
                     <tr>
@@ -246,6 +260,7 @@ wp_enqueue_script( 'wa-template-builder-js', plugins_url( '../assets/template-bu
                                 <option value="vi" <?php selected($saved_language, 'vi'); ?>>Vietnamese</option>
                                 <option value="zu" <?php selected($saved_language, 'zu'); ?>>Zulu</option>
                             </select>
+                            <p class="description"><?php esc_html_e( 'Choose the same language used in the message text. WhatsApp approval is language-specific, so Gujarati content should use Gujarati, Hindi content should use Hindi, and so on.', 'whatsapp-connector' ); ?></p>
                         </td>
                     </tr>
                     <tr class="wa-body-heading-row">
@@ -262,12 +277,14 @@ wp_enqueue_script( 'wa-template-builder-js', plugins_url( '../assets/template-bu
                                 <option value="VIDEO" <?php selected($saved_header_type, 'VIDEO'); ?>><?php esc_html_e( 'Video', 'whatsapp-connector' ); ?></option>
                                 <option value="DOCUMENT" <?php selected($saved_header_type, 'DOCUMENT'); ?>><?php esc_html_e( 'Document', 'whatsapp-connector' ); ?></option>
                             </select>
+                            <p class="description"><?php esc_html_e( 'Select Text for a short title header, or choose Image, Video, or Document when the template should start with media.', 'whatsapp-connector' ); ?></p>
                         </td>
                     </tr>
                     <tr id="wa_header_text_row" class="wa-standard-row">
                         <th scope="row"><label for="wa_header_text"><?php esc_html_e( 'Header Text', 'whatsapp-connector' ); ?></label></th>
                         <td>
                             <input type="text" id="wa_header_text" class="large-text" value="<?php echo esc_attr($saved_header_text); ?>" maxlength="60" />
+                            <p class="description"><?php esc_html_e( 'Optional short title shown above the message body. Use it for campaign title, order update heading, or alert title. Maximum 60 characters.', 'whatsapp-connector' ); ?></p>
                         </td>
                     </tr>
                     <tr id="wa_header_media_row" class="wa-standard-row" style="<?php echo (in_array($saved_header_type, ['IMAGE', 'VIDEO', 'DOCUMENT'])) ? '' : 'display:none;'; ?>">
@@ -277,118 +294,39 @@ wp_enqueue_script( 'wa-template-builder-js', plugins_url( '../assets/template-bu
                             <input type="hidden" id="wa_header_media_url" value="<?php echo esc_url($saved_header_url); ?>">
                             <button type="button" class="button" id="wa_upload_media_btn"><?php esc_html_e( 'Choose Media', 'whatsapp-connector' ); ?></button>
                             <span id="wa_media_status" style="margin-left: 10px;">
-                                <?php echo $saved_header_handle ? esc_html__( 'Media exists', 'whatsapp-connector' ) : esc_html__( 'No media selected', 'whatsapp-connector' ); ?>
+                                <?php if ( $saved_header_handle ) : ?>
+                                    ✅ <?php esc_html_e( 'Media saved', 'whatsapp-connector' ); ?>
+                                    <span style="color:#666; font-size:11px; margin-left:6px;">(<?php echo esc_html( strlen($saved_header_handle) > 40 ? substr($saved_header_handle, 0, 40) . '…' : $saved_header_handle ); ?>)</span>
+                                <?php else : ?>
+                                    <?php esc_html_e( 'No media selected', 'whatsapp-connector' ); ?>
+                                <?php endif; ?>
                             </span>
                             <div id="wa_media_preview" style="margin-top: 10px; max-width: 200px;">
-                                <?php if ($saved_header_url): ?>
+                                <?php if ( $saved_header_url && preg_match('/\.(jpg|jpeg|png|gif|webp)(\?.*)?$/i', $saved_header_url) ) : ?>
+                                    <img src="<?php echo esc_url($saved_header_url); ?>" alt="Header preview" style="max-width:200px; max-height:120px; border:1px solid #ddd; border-radius:4px;">
+                                <?php elseif ( $saved_header_url ) : ?>
                                     <a href="<?php echo esc_url($saved_header_url); ?>" target="_blank"><?php esc_html_e( 'Preview Uploaded File', 'whatsapp-connector' ); ?></a>
+                                <?php elseif ( $saved_header_handle ) : ?>
+                                    <p style="color:#666; font-size:12px; margin:4px 0 0;"><?php esc_html_e( 'Media handle stored (from API sync). Re-upload if you want to change it.', 'whatsapp-connector' ); ?></p>
                                 <?php endif; ?>
                             </div>
+                            <p class="description"><?php esc_html_e( 'Required when Header Type is Image, Video, or Document. Upload the file that should appear at the top of the WhatsApp message.', 'whatsapp-connector' ); ?></p>
                         </td>
                     </tr>
                     <tr class="wa-standard-row">
                         <th>
                             <label for="wa_message_body"><?php esc_html_e( 'Body Content', 'whatsapp-connector' ); ?> <span style="color:red;">*</span></label>
-                            <br>
-                            <div class="wa-variable-inserter" style="position: relative; display: inline-block;">
-                                <button type="button" class="button" id="wa_insert_variable"><?php esc_html_e( 'Insert Variable {{}}', 'whatsapp-connector' ); ?></button>
-                                
-                                <div class="wa-premium-variable-menu" id="wa_variable_menu" style="display: none;">
-                                    <style>
-                                        .wa-premium-variable-menu {
-                                            position: absolute; left: 0; top: 100%; margin-top: 5px; width: 350px; 
-                                            background: #ffffff; border: 1px solid #e0e0e0; border-radius: 8px;
-                                            box-shadow: 0 10px 30px rgba(0,0,0,0.1); z-index: 1000; overflow: hidden;
-                                            font-family: inherit; font-weight: normal; text-align: left;
-                                        }
-                                        .wa-var-tabs {
-                                            display: flex; overflow-x: auto; background: #f8f9fa; 
-                                            border-bottom: 1px solid #eee; scrollbar-width: none;
-                                        }
-                                        .wa-var-tabs::-webkit-scrollbar { display: none; }
-                                        .wa-var-tab-btn {
-                                            flex: 0 0 auto; padding: 12px 16px; border: none; background: transparent;
-                                            font-weight: 600; font-size: 13px; color: #555; cursor: pointer;
-                                            border-bottom: 2px solid transparent; transition: all 0.2s;
-                                        }
-                                        .wa-var-tab-btn:hover { color: #006bb4; }
-                                        .wa-var-tab-btn.active { color: #006bb4; border-bottom-color: #006bb4; background: #fff; }
-                                        .wa-var-content-area { padding: 0; max-height: 250px; overflow-y: auto; }
-                                        .wa-var-panel { display: none; padding: 12px; }
-                                        .wa-var-panel.active { display: block; }
-                                        .wa-var-list { display: flex; flex-direction: column; gap: 4px; }
-                                        .wa-var-item {
-                                            cursor: pointer; padding: 8px 12px; color: #333; font-size: 13px; 
-                                            border-radius: 6px; transition: all 0.2s ease; border: 1px solid transparent;
-                                            display: flex; justify-content: space-between; align-items: center; text-decoration: none;
-                                        }
-                                        .wa-var-item:hover {
-                                            background: #f0f8ff; color: #005690; border-color: #d0e7ff; text-decoration: none;
-                                        }
-                                        .wa-var-badge {
-                                            font-size: 11px; color: #006bb4; background: #e6f2fc; 
-                                            padding: 2px 6px; border-radius: 4px; font-family: monospace;
-                                        }
-                                    </style>
-                                    
-                                    <?php
-                                    require_once dirname(__FILE__) . '/../includes/wc-woocommerce-variables.php';
-                                    $hook_map = [
-                                        'order_created' => 'wa_order_creation_table_data',
-                                        'order_shipment' => 'wa_order_shipment_table_data',
-                                        'order_invoice' => 'wa_order_invoice_table_data',
-                                        'order_creditmemo' => 'wa_order_credit_memo_table_data',
-                                        'marketing' => 'wa_order_creation_table_data', // fallback
-                                    ];
-                                    $hook_key = $hook_map[$hook_type] ?? 'wa_order_creation_table_data';
-                                    $available_variables = WA_WoocommerceOptions::get_woocommerce_options($hook_key);
-                                    
-                                    $groups = ['Order' => [], 'Customer & Address' => []];
-                                    foreach ( $available_variables as $key => $label ) {
-                                        if ( strpos($key, 'billing_') === 0 || strpos($key, 'shipping_') === 0 || strpos($key, 'customer_') === 0 ) {
-                                            $groups['Customer & Address'][$key] = $label;
-                                        } else {
-                                            $groups['Order'][$key] = $label;
-                                        }
-                                    }
-                                    ?>
-                                    
-                                    <div class="wa-var-tabs">
-                                        <?php $first = true; foreach ($groups as $groupName => $vars): ?>
-                                            <button type="button" class="wa-var-tab-btn<?= $first ? ' active' : '' ?>"
-                                                    data-target="panel-<?= str_replace([' ', '&'], ['-', ''], strtolower($groupName)) ?>">
-                                                <?= esc_html($groupName) ?>
-                                            </button>
-                                        <?php $first = false; endforeach; ?>
-                                    </div>
-                                    
-                                    <div class="wa-var-content-area">
-                                        <?php $first = true; foreach ($groups as $groupName => $vars): ?>
-                                            <div id="panel-<?= str_replace([' ', '&'], ['-', ''], strtolower($groupName)) ?>"
-                                                 class="wa-var-panel<?= $first ? ' active' : '' ?>">
-                                                <div class="wa-var-list">
-                                                    <?php foreach ($vars as $key => $label): ?>
-                                                        <a class="wa-var-item" data-val="{{<?= esc_attr($key) ?>}}">
-                                                            <span><?= esc_html($label) ?></span>
-                                                            <span class="wa-var-badge"><?= esc_html($key) ?></span>
-                                                        </a>
-                                                    <?php endforeach; ?>
-                                                </div>
-                                            </div>
-                                        <?php $first = false; endforeach; ?>
-                                    </div>
-                                </div>
-                            </div>
                         </th>
                         <td>
                             <textarea id="wa_message_body" rows="6" class="large-text"><?php echo esc_textarea($saved_body_template); ?></textarea>
-                            <p class="description">Place cursor in text area and click insert variable.</p>
+                            <p class="description"><?php esc_html_e( 'Write the customer-facing WhatsApp message here. If dynamic values are needed, type the approved placeholders manually, for example {{firstname}}, {{lastname}}, {{name}}, {{email}}, {{phone}}, {{customer_id}}, {{mobileNumber}}, {{countryCode}}, {{businessName}}, or {{website}}. No insert-variable grid is shown on this screen.', 'whatsapp-connector' ); ?></p>
                         </td>
                     </tr>
                     <tr class="wa-standard-row">
                         <th scope="row"><label for="wa_footer_text"><?php esc_html_e( 'Footer', 'whatsapp-connector' ); ?></label></th>
                         <td>
                             <input type="text" id="wa_footer_text" class="large-text" value="<?php echo esc_attr($saved_footer); ?>" maxlength="60" />
+                            <p class="description"><?php esc_html_e( 'Optional small text shown below the body. Use it for unsubscribe note, store name, or a short reminder. Maximum 60 characters.', 'whatsapp-connector' ); ?></p>
                         </td>
                     </tr>
                     <tr class="wa-standard-row">
@@ -399,6 +337,7 @@ wp_enqueue_script( 'wa-template-builder-js', plugins_url( '../assets/template-bu
                               <span class="wa-slider round"></span>
                             </label>
                             <span class="wa-switch-label"><?php esc_html_e( 'Yes', 'whatsapp-connector' ); ?></span>
+                            <p class="description"><?php esc_html_e( 'Turn this on when the message needs customer actions such as open website, quick reply, call, or copy coupon code.', 'whatsapp-connector' ); ?></p>
                         </td>
                     </tr>
                     <tr id="wa_buttons_row" class="wa-standard-row">
@@ -431,7 +370,7 @@ wp_enqueue_script( 'wa-template-builder-js', plugins_url( '../assets/template-bu
                                 </div>
                             </div>
                             <button type="button" class="button" id="wa_add_button" style="margin-top: 10px;"><?php esc_html_e( 'Add Button', 'whatsapp-connector' ); ?></button>
-                            <span class="description" style="margin-left: 10px;"><?php esc_html_e( 'Maximum 3 buttons allowed.', 'whatsapp-connector' ); ?></span>
+                            <span class="description" style="margin-left: 10px;"><?php esc_html_e( 'Maximum 3 buttons allowed. URL opens a page, Quick Reply sends a preset reply, Phone Number starts a call, and Copy Coupon Code copies the offer code.', 'whatsapp-connector' ); ?></span>
                         </td>
                     </tr>
                     <tr id="wa_carousel_row" style="display:none;">
@@ -449,9 +388,14 @@ wp_enqueue_script( 'wa-template-builder-js', plugins_url( '../assets/template-bu
                 </tbody>
             </table>
             
-            <p class="submit">
-                <button type="button" class="button button-primary" id="wa_save_template"><?php esc_html_e( 'Save Template', 'whatsapp-connector' ); ?></button>
-            </p>
+            <div class="wa-save-bar">
+                <button type="button" id="wa_save_template">
+                    <span class="wa-save-icon">💾</span>
+                    <span class="wa-save-label"><?php esc_html_e( 'Save Template', 'whatsapp-connector' ); ?></span>
+                    <span class="wa-save-spinner" style="display:none;">⏳</span>
+                </button>
+                <span id="wa_save_status"></span>
+            </div>
         </div>
 
         <!-- Right Side: Live Preview -->

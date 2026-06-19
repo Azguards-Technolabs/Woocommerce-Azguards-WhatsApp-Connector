@@ -64,7 +64,6 @@ jQuery(function ($) {
 
     jQuery(document).ready(function ($) {
         const configKeys = [
-            'user_registration',
             'order_creation',
             'order_pending_payment',
             'order_processing',
@@ -124,4 +123,3 @@ jQuery(function ($) {
         });
     });
 });
-

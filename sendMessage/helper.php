@@ -1,4 +1,8 @@
 <?php
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
 /**
  * Process the template variables for a given template option key and source object.
  *
@@ -19,68 +23,171 @@ function wa_process_template_variables( $template_option_key, $source_object ) {
     foreach ( $template_variables as $variable ) {
         $index    = $variable['index'];
         $property = $variable['max_results'];
-        $method   = 'get_' . $property;
-
-        switch ( $property ) {
-            case 'first_name':
-            case 'billing_first_name':
-                $value = method_exists( $source_object, 'get_billing_first_name' )
-                    ? $source_object->get_billing_first_name()
-                    : '';
-                break;
-
-            case 'last_name':
-            case 'billing_last_name':
-                $value = method_exists( $source_object, 'get_billing_last_name' )
-                    ? $source_object->get_billing_last_name()
-                    : '';
-                break;
-
-            case 'items_summary':
-                if ( method_exists( $source_object, 'get_items' ) ) {
-                    $items_text = [];
-                    foreach ( $source_object->get_items() as $item ) {
-                        $qty  = $item->get_quantity();
-                        $name = $item->get_name();
-                        // We use a default structure if the exact inner template isn't available at runtime.
-                        $items_text[] = "{$qty} x {$name}";
-                    }
-                    $value = implode( "\n", $items_text );
-                }
-                break;
-
-            default:
-                if ( method_exists( $source_object, $method ) ) {
-                    $value = $source_object->$method();
-                } else {
-                    // Dot Notation Parsing 
-                    // Support order.grand_total to grand_total
-                    $clean_prop = $property;
-                    if ( strpos( $clean_prop, 'order.' ) === 0 ) {
-                        $clean_prop = str_replace( 'order.', '', $clean_prop );
-                    }
-                    
-                    if ( $clean_prop === 'grand_total' || $clean_prop === 'total' ) {
-                        $value = method_exists($source_object, 'get_total') ? $source_object->get_total() : '';
-                    } else if ( $clean_prop === 'status' ) {
-                        $value = method_exists($source_object, 'get_status') ? $source_object->get_status() : '';
-                    } else if ( $clean_prop === 'order_number' || $clean_prop === 'id' ) {
-                        $value = method_exists($source_object, 'get_order_number') ? $source_object->get_order_number() : ($source_object->get_id() ?? '');
-                    } else if ( method_exists( $source_object, 'get_' . $clean_prop ) ) {
-                        $dynamic_method = 'get_' . $clean_prop;
-                        $value = $source_object->$dynamic_method();
-                    } else {
-                        $data  = is_callable( [ $source_object, 'get_data' ] ) ? $source_object->get_data() : [];
-                        $value = $data[ $property ] ?? ( $data[ $clean_prop ] ?? '' );
-                    }
-                }
-                break;
-        }
+        $value    = wa_resolve_template_variable_value( $property, $source_object );
 
         $template_variable_data[ $index ] = $value;
     }
 
     return $template_variable_data;
+}
+
+/**
+ * Resolve Magento-style template variable paths against WooCommerce objects.
+ *
+ * @param string $property      Variable path from the template mapping.
+ * @param object $source_object Usually a WC_Order.
+ *
+ * @return mixed
+ */
+function wa_resolve_template_variable_value( $property, $source_object ) {
+    $property = trim( (string) $property );
+    $property = preg_replace( '/^\s*var\s+/', '', $property );
+    $property = str_replace( '()', '', $property );
+
+    if ( $property === '' ) {
+        return '';
+    }
+
+    $prefixless = $property;
+    if ( strpos( $prefixless, '.' ) !== false ) {
+        $parts      = explode( '.', $prefixless );
+        $prefixless = end( $parts );
+    }
+
+    $aliases = [
+        'base_url'             => 'base_url',
+        'store_base_url'       => 'base_url',
+        'entity_id'            => 'id',
+        'increment_id'         => 'order_number',
+        'grand_total'          => 'total',
+        'shipping_amount'      => 'shipping_total',
+        'created_at'           => 'date_created',
+        'updated_at'           => 'date_modified',
+        'customer_email'       => 'billing_email',
+        'customer_firstname'   => 'billing_first_name',
+        'customer_lastname'    => 'billing_last_name',
+        'firstname'            => 'billing_first_name',
+        'lastname'             => 'billing_last_name',
+        'payment_method'       => 'payment_method',
+        'billing_address'      => 'billing_address',
+        'shipping_address'     => 'shipping_address',
+        'tracking_number'      => 'tracking_number',
+        'carrier_name'         => 'carrier_name',
+        'items_summary'        => 'items_summary',
+        'qty_ordered'          => 'qty_ordered',
+        'row_total'            => 'row_total',
+    ];
+
+    $clean_prop = $aliases[ $prefixless ] ?? $prefixless;
+
+    switch ( $clean_prop ) {
+        case 'base_url':
+            return trailingslashit( get_site_url() );
+
+        case 'id':
+            return is_callable( [ $source_object, 'get_id' ] ) ? $source_object->get_id() : '';
+
+        case 'order_number':
+            return is_callable( [ $source_object, 'get_order_number' ] ) ? $source_object->get_order_number() : '';
+
+        case 'billing_first_name':
+            return is_callable( [ $source_object, 'get_billing_first_name' ] ) ? $source_object->get_billing_first_name() : '';
+
+        case 'billing_last_name':
+            return is_callable( [ $source_object, 'get_billing_last_name' ] ) ? $source_object->get_billing_last_name() : '';
+
+        case 'total':
+            return is_callable( [ $source_object, 'get_total' ] ) ? $source_object->get_total() : '';
+
+        case 'subtotal':
+            return is_callable( [ $source_object, 'get_subtotal' ] ) ? $source_object->get_subtotal() : '';
+
+        case 'billing_address':
+            return wa_format_order_address( $source_object, 'billing' );
+
+        case 'shipping_address':
+            return wa_format_order_address( $source_object, 'shipping' );
+
+        case 'tracking_number':
+        case 'carrier_name':
+            return wa_get_order_tracking_value( $source_object, $clean_prop );
+
+        case 'items_summary':
+            return wa_get_order_items_summary( $source_object );
+    }
+
+    $method = 'get_' . $clean_prop;
+    if ( is_callable( [ $source_object, $method ] ) ) {
+        $value = $source_object->$method();
+        return wa_normalize_template_variable_value( $value );
+    }
+
+    $data = is_callable( [ $source_object, 'get_data' ] ) ? $source_object->get_data() : [];
+    return wa_normalize_template_variable_value( $data[ $property ] ?? ( $data[ $clean_prop ] ?? '' ) );
+}
+
+function wa_format_order_address( $order, $type ) {
+    $method = 'get_formatted_' . $type . '_address';
+    if ( is_callable( [ $order, $method ] ) ) {
+        return wp_strip_all_tags( str_replace( '<br/>', ', ', $order->$method() ) );
+    }
+
+    return '';
+}
+
+function wa_get_order_items_summary( $order ) {
+    if ( ! is_callable( [ $order, 'get_items' ] ) ) {
+        return '';
+    }
+
+    $items_text = [];
+    foreach ( $order->get_items() as $item ) {
+        $qty   = is_callable( [ $item, 'get_quantity' ] ) ? $item->get_quantity() : '';
+        $name  = is_callable( [ $item, 'get_name' ] ) ? $item->get_name() : '';
+        $total = is_callable( [ $item, 'get_total' ] ) ? $item->get_total() : '';
+
+        $items_text[] = "{$name} x {$qty} = {$total}";
+    }
+
+    return implode( "\n", $items_text );
+}
+
+function wa_get_order_tracking_value( $order, $field ) {
+    if ( ! is_callable( [ $order, 'get_meta' ] ) ) {
+        return '';
+    }
+
+    $tracking_items = $order->get_meta( '_wc_shipment_tracking_items' );
+    if ( empty( $tracking_items ) || ! is_array( $tracking_items ) ) {
+        return '';
+    }
+
+    $tracking_item = reset( $tracking_items );
+    if ( ! is_array( $tracking_item ) ) {
+        return '';
+    }
+
+    if ( $field === 'tracking_number' ) {
+        return $tracking_item['tracking_number'] ?? '';
+    }
+
+    return $tracking_item['tracking_provider'] ?? ( $tracking_item['custom_tracking_provider'] ?? '' );
+}
+
+function wa_normalize_template_variable_value( $value ) {
+    if ( $value instanceof DateTimeInterface ) {
+        return $value->format( 'Y-m-d H:i:s' );
+    }
+
+    if ( is_object( $value ) && is_callable( [ $value, '__toString' ] ) ) {
+        return (string) $value;
+    }
+
+    if ( is_scalar( $value ) || $value === null ) {
+        return $value;
+    }
+
+    return wp_json_encode( $value );
 }
 
 /**
