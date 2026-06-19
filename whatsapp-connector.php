@@ -4,14 +4,18 @@
  * Description:       Adds WhatsApp template configuration to WooCommerce settings.
  * Version:           1.0
  * Author:            Azguards Technolabs
+ * Text Domain:       whatsapp-connector
+ * Domain Path:       /languages
  */
 
 defined( 'ABSPATH' ) || exit;
 
+define( 'WA_CONNECTOR_VERSION', '1.0.0' );
 define( 'WC_WHATSAPP_CONNECTOR_PATH', plugin_dir_path( __FILE__ ) );
 
 require_once plugin_dir_path( __FILE__ ) . 'includes/wc-defaults.php';
 require_once plugin_dir_path( __FILE__ ) . 'includes/wc-auth.php';
+require_once plugin_dir_path( __FILE__ ) . 'includes/wc-cron.php';
 require_once plugin_dir_path( __FILE__ ) . 'includes/wc-templates.php';
 require_once plugin_dir_path( __FILE__ ) . 'includes/wc-contact.php';
 require_once plugin_dir_path( __FILE__ ) . 'includes/wc-customer-sync.php';
@@ -20,7 +24,9 @@ require_once plugin_dir_path( __FILE__ ) . 'includes/wc-message.php';
 require_once plugin_dir_path( __FILE__ ) . 'includes/wc-variable.php';
 require_once plugin_dir_path( __FILE__ ) . 'includes/wc-woocommerce-variables.php';
 require_once plugin_dir_path( __FILE__ ) . 'includes/wc-variables-configuration-table.php';
-require_once plugin_dir_path( __FILE__ ) . 'sendMessage/user-register.php';
+require_once plugin_dir_path( __FILE__ ) . 'includes/wc-abandoned-cart.php';
+require_once plugin_dir_path( __FILE__ ) . 'includes/wc-queue-processor.php';
+// user-register.php removed — User Registration WA notifications not part of Magento parity scope.
 require_once plugin_dir_path( __FILE__ ) . 'sendMessage/helper.php';
 require_once plugin_dir_path( __FILE__ ) . 'sendMessage/woocommerce-hooks.php';
 require_once plugin_dir_path( __FILE__ ) . 'admin/authentication/validate-credentials.php';
@@ -54,8 +60,8 @@ function whatsapp_connector_plugin_default_values() {
     }
 
     // Legacy/Internal URLs (keeping them just in case, but updating to match defaults where applicable)
-    add_option( 'wa_contact_api_url', 'https://wp-conn.aztechstaging.in/v1/contact' );
-    add_option( 'wa_message_api_url', 'https://wp-conn.aztechstaging.in/v1/message/sendTemplate' );
+    update_option( 'wa_contact_api_url', 'https://whatatalk-api.azguardstech.com/v1/contact' );
+    update_option( 'wa_message_api_url', 'https://whatatalk-api.azguardstech.com/messaging-service/api/v1/message/send' );
 }
 add_action( 'whatsapp_connector_plugin_default_options', 'whatsapp_connector_plugin_default_values' );
 
@@ -77,6 +83,11 @@ add_action(
 function whatsapp_connector_plugin_activation() {
     do_action( 'whatsapp_connector_plugin_default_options' );
     WA_Database::create_tables();
+
+    // Schedule initial crons
+    if ( function_exists( 'wa_reschedule_crons' ) ) {
+        wa_reschedule_crons();
+    }
 }
 register_activation_hook( __FILE__, 'whatsapp_connector_plugin_activation' );
 
@@ -84,8 +95,8 @@ register_activation_hook( __FILE__, 'whatsapp_connector_plugin_activation' );
  * Enqueue admin styles and scripts.
  */
 add_action( 'admin_enqueue_scripts', function () {
-    wp_enqueue_style( 'wa-connector-css', plugins_url( 'assets/admin.css', __FILE__ ) );
-    wp_enqueue_script( 'wa-connector-js', plugins_url( 'assets/admin.js', __FILE__ ), array( 'jquery' ), null, true );
+    wp_enqueue_style( 'wa-connector-css', plugins_url( 'assets/admin.css', __FILE__ ), array(), WA_CONNECTOR_VERSION );
+    wp_enqueue_script( 'wa-connector-js', plugins_url( 'assets/admin.js', __FILE__ ), array( 'jquery' ), WA_CONNECTOR_VERSION, true );
     wp_enqueue_style( 'select2', 'https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css' );
     wp_enqueue_script( 'select2', 'https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js', array( 'jquery' ), null, true );
 } );
@@ -156,23 +167,59 @@ add_action( 'admin_menu', function () {
  * Ensure WhatTack Template Builder and Campaign Edit pages are highlighted in WooCommerce menu
  */
 add_filter( 'parent_file', function ( $parent_file ) {
-    $screen = get_current_screen();
-    if ( $screen && in_array( $screen->id, [ 'admin_page_wa-template-builder', 'admin_page_wa-campaign-edit' ] ) ) {
+    $current_page = isset($_GET['page']) ? sanitize_text_field($_GET['page']) : '';
+    if ( in_array( $current_page, [ 'wa-template-builder', 'wa-campaign-edit' ] ) ) {
         return 'woocommerce';
     }
     return $parent_file;
-} );
+}, 9999 );
 
 add_filter( 'submenu_file', function ( $submenu_file ) {
-    $screen = get_current_screen();
-    if ( $screen ) {
-        if ( $screen->id === 'admin_page_wa-template-builder' ) {
-            return 'wa-templates-grid';
-        } elseif ( $screen->id === 'admin_page_wa-campaign-edit' ) {
-            return 'wa-campaigns';
-        }
+    $current_page = isset($_GET['page']) ? sanitize_text_field($_GET['page']) : '';
+    if ( $current_page === 'wa-template-builder' ) {
+        return 'wa-templates-grid';
+    } elseif ( $current_page === 'wa-campaign-edit' ) {
+        return 'wa-campaigns';
     }
     return $submenu_file;
+}, 9999 );
+
+/**
+ * Bulletproof JS fallback for sidebar highlighting since WooCommerce sometimes overrides PHP menu filters.
+ */
+add_action( 'admin_head', function () {
+    $current_page = isset( $_GET['page'] ) ? sanitize_text_field( wp_unslash( $_GET['page'] ) ) : '';
+    if ( $current_page === 'wa-template-builder' ) {
+        echo '<script>
+            jQuery(document).ready(function($) {
+                $("#toplevel_page_woocommerce").removeClass("wp-not-current-submenu").addClass("wp-has-current-submenu wp-menu-open");
+                $("#toplevel_page_woocommerce > a").removeClass("wp-not-current-submenu").addClass("wp-has-current-submenu wp-menu-open");
+                $("ul.wp-submenu a[href=\'admin.php?page=wa-templates-grid\']").parent("li").addClass("current");
+            });
+        </script>';
+    } elseif ( $current_page === 'wa-campaign-edit' ) {
+        echo '<script>
+            jQuery(document).ready(function($) {
+                $("#toplevel_page_woocommerce").removeClass("wp-not-current-submenu").addClass("wp-has-current-submenu wp-menu-open");
+                $("#toplevel_page_woocommerce > a").removeClass("wp-not-current-submenu").addClass("wp-has-current-submenu wp-menu-open");
+                $("ul.wp-submenu a[href=\'admin.php?page=wa-campaigns\']").parent("li").addClass("current");
+            });
+        </script>';
+    }
+} );
+
+/**
+ * Register custom screens with WooCommerce so it doesn't collapse the menu
+ */
+add_filter( 'woocommerce_screen_ids', function ( $ids ) {
+    $ids[] = 'admin_page_wa-template-builder';
+    $ids[] = 'admin_page_wa-campaign-edit';
+    $ids[] = 'toplevel_page_wa-template-builder';
+    $ids[] = 'toplevel_page_wa-campaign-edit';
+    $ids[] = 'woocommerce_page_wa-customers';
+    $ids[] = 'woocommerce_page_wa-campaigns';
+    $ids[] = 'woocommerce_page_wa-templates-grid';
+    return $ids;
 } );
 
 add_action( 'current_screen', function () {

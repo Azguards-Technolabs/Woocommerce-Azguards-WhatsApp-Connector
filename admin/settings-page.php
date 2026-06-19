@@ -145,6 +145,15 @@ class WC_Settings_WhatsApp_Connector extends WC_Settings_Page {
         }
 
         $settings[] = [
+            'title'    => __( 'Consider Abandoned After (minutes)', 'whatsapp-connector' ),
+            'desc'     => __( 'Number of minutes of inactivity before a cart is treated as abandoned. Recommended: 60.', 'whatsapp-connector' ),
+            'id'       => 'wa_abandoned_cart_trigger_delay',
+            'type'     => 'text',
+            'default'  => '60',
+            'desc_tip' => true,
+        ];
+
+        $settings[] = [
             'type' => 'sectionend',
             'id'   => 'wa_general_config',
         ];
@@ -196,6 +205,17 @@ class WC_Settings_WhatsApp_Connector extends WC_Settings_Page {
         global $current_section;
         // Inject Custom Renderer
         add_action('woocommerce_admin_field_wa_embedded_builder', [$this, 'render_embedded_builder'], 10, 1);
+        if ( $current_section === 'templates' ) {
+            echo '<style>
+                .wa-settings-template-card{border:1px solid #dfe3e8;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.06);margin-bottom:16px}
+                .wa-settings-template-card .wa-accordion-header{font-weight:600;font-size:14px;padding:15px 18px;border-bottom:1px solid #eef0f2;background:#f7f9fb;color:#1d2327;display:flex;justify-content:space-between;align-items:center;cursor:pointer}
+                .wa-settings-template-card .wa-accordion-header:hover{background:#f1f6f4}
+                .wa-settings-template-card .wa-accordion-title{display:flex;flex-direction:column;gap:3px}
+                .wa-settings-template-card .wa-accordion-title small{font-weight:400;color:#667085;font-size:12px}
+                .wa-settings-template-card .wa-accordion-toggle{border:1px solid #cfd6dd;border-radius:16px;padding:2px 9px;font-size:12px;background:#fff;color:#475467}
+                .wa-settings-template-card .wa-settings-template-body{padding:20px;background:#fff}
+            </style>';
+        }
         
         WC_Admin_Settings::output_fields( $this->get_settings() );
     }
@@ -207,12 +227,15 @@ class WC_Settings_WhatsApp_Connector extends WC_Settings_Page {
         ?>
         <tr valign="top">
             <td colspan="2" style="padding:0; padding-bottom: 20px;">
-                <div style="border:1px solid #ccc; background:#fff; border-radius:3px;">
-                    <div class="wa-accordion-header" onclick="jQuery('#<?php echo $accordion_id; ?>').slideToggle();" style="font-weight:bold; font-size:14px; padding:15px; border-bottom:1px solid #eee; background:#fafafa; color:#333; display:flex; justify-content:space-between; cursor:pointer;">
-                        <span><?php echo esc_html($label); ?></span>
-                        <span style="border:1px solid #ccc; border-radius:10px; padding:2px 8px; font-size:12px;">▼</span>
+                <div class="wa-settings-template-card">
+                    <div class="wa-accordion-header" onclick="jQuery('#<?php echo $accordion_id; ?>').slideToggle();">
+                        <span class="wa-accordion-title">
+                            <?php echo esc_html($label); ?>
+                            <small><?php esc_html_e( 'Configure the WhatsApp message sent automatically for this event.', 'whatsapp-connector' ); ?></small>
+                        </span>
+                        <span class="wa-accordion-toggle">▼</span>
                     </div>
-                    <div id="<?php echo $accordion_id; ?>" style="padding:20px; display:none;">
+                    <div id="<?php echo $accordion_id; ?>" class="wa-settings-template-body" style="display:none;">
                         <!-- Embed Builder UI natively here! -->
                         <?php 
                         // Simulate setting up GET param for the included file
@@ -230,6 +253,13 @@ class WC_Settings_WhatsApp_Connector extends WC_Settings_Page {
         global $current_section;
         $settings = $this->get_settings();
         WC_Admin_Settings::save_fields( $settings );
+
+        // Reschedule crons if general settings (which include crons) are saved.
+        if ( empty( $current_section ) ) {
+            if ( function_exists( 'wa_reschedule_crons' ) ) {
+                wa_reschedule_crons();
+            }
+        }
 
         if ( $current_section === 'templates' ) {
             $hooks = [

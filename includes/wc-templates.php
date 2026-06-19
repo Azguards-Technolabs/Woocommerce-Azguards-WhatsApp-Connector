@@ -42,14 +42,14 @@ class WA_Templates {
             return array( '' => __( 'API URL not set', 'whatsapp-connector' ) );
         }
 
-        $business_id = '18462116-8abf-4960-80b2-dd6c76e2532c';
-        $user_id     = 'a008d8b8-bc54-4e43-9a62-67b3c1b546f3';
+        $business_id = get_option( 'wa_business_id' );
+        $user_id     = get_option( 'wa_user_id' );
 
         $response = wp_remote_get(
             $api_url,
             array(
                 'headers' => array(
-                    // 'Authorization' => 'Bearer ' . $token,
+                    'Authorization' => 'Bearer ' . $token,
                     'businessId' => $business_id,
                     'userId'     => $user_id,
                 ),
@@ -153,85 +153,97 @@ if ( ! function_exists( 'wa_get_template_sync_next_url' ) ) :
 endif;
 
 /**
- * AJAX: Sync templates from API to local database.
+ * Core function to sync templates from API to local database.
+ *
+ * @return int|WP_Error Number of synced templates or WP_Error on failure.
  */
-add_action( 'wp_ajax_wa_sync_templates', 'wa_sync_templates_handler' );
+if ( ! function_exists( 'wa_sync_templates' ) ) :
+    function wa_sync_templates() {
+        error_log( "[WA Sync] Starting template sync execution." );
 
-if ( ! function_exists( 'wa_sync_templates_handler' ) ) :
-    /**
-     * Handle AJAX request to sync templates.
-     */
-    function wa_sync_templates_handler() {
-        if ( ! current_user_can( 'manage_woocommerce' ) ) {
-            wp_send_json_error( __( 'Unauthorized', 'whatsapp-connector' ) );
-        }
-
-        check_ajax_referer( 'wa_sync_templates', 'security' );
-
-        $token = get_transient( 'wa_access_token' );
-        if ( ! $token ) {
-            $data = WA_Auth::get_token();
-            if ( is_wp_error( $data ) ) {
-                wp_send_json_error( __( 'Authentication failed.', 'whatsapp-connector' ) );
-            }
-            $token = $data['access_token'] ?? '';
+        $token = wa_get_valid_token();
+        if ( is_wp_error( $token ) ) {
+            error_log( "[WA Sync] Authentication failed: " . $token->get_error_message() );
+            return $token;
         }
 
         $api_base_url = rtrim( get_option( 'wa_template_api_url', 'https://whatatalk-api.azguardstech.com/' ), '/' );
-
-        // Log the API URL for debugging. DO NOT log the token.
-        error_log( 'WA_API_URL: ' . wa_get_template_list_page_url( $api_base_url, 0, 100 ) );
-
-        $business_id = get_option( 'wa_business_id' );
-        $user_id     = get_option( 'wa_user_id' );
+        $business_id  = get_option( 'wa_business_id' );
+        $user_id      = get_option( 'wa_user_id' );
 
         if ( empty( $business_id ) || empty( $user_id ) ) {
-            // Force a token refresh to extract business/user IDs
+            error_log( "[WA Sync] Business ID or User ID missing. Attempting refresh." );
             $auth_data = WA_Auth::get_token();
             if ( is_wp_error( $auth_data ) ) {
-                wp_send_json_error( __( 'Could not retrieve business or user IDs. Please check credentials.', 'whatsapp-connector' ) );
+                 return new WP_Error( 'wa_sync_config_error', __( 'Could not retrieve business or user IDs.', 'whatsapp-connector' ) );
             }
             $business_id = get_option( 'wa_business_id' );
             $user_id     = get_option( 'wa_user_id' );
-            $token       = $auth_data['access_token'] ?? '';
+            $token       = $auth_data['access_token'] ?? $token;
         }
 
         global $wpdb;
         $table_name = $wpdb->prefix . 'azguards_whatsapp_templates';
 
         // Ensure table exists and schema is current.
-        WA_Database::create_tables();
+        if ( class_exists( 'WA_Database' ) ) {
+            WA_Database::create_tables();
+        }
 
-        $synced_count       = 0;
+        $counts = [
+            'received' => 0,
+            'inserted' => 0,
+            'updated'  => 0,
+            'skipped'  => 0,
+        ];
         $page_count         = 0;
         $previous_first_id  = null;
         $next_url           = wa_get_template_list_page_url( $api_base_url, 0, 100 );
 
-        error_log( "[WA Sync] Starting template sync. Initial URL: $next_url" );
-
         while ( $next_url ) {
             $page_count++;
-            error_log( "[WA Sync] Fetching page $page_count. URL: $next_url" );
 
-            $response = wp_remote_get(
-                $next_url,
-                array(
-                    'headers' => array(
-                        'Authorization' => 'Bearer ' . $token,
-                        'businessId'    => $business_id,
-                        'userId'        => $user_id,
-                    ),
-                    'timeout' => 30,
-                )
-            );
+            // Fetch templates with retries
+            $response = null;
+            for ( $i = 0; $i < 3; $i++ ) {
+                error_log( "[WA Sync] Fetching page $page_count (Attempt " . ($i+1) . "). URL: $next_url" );
+                $response = wp_remote_get(
+                    $next_url,
+                    array(
+                        'headers' => array(
+                            'Authorization' => 'Bearer ' . $token,
+                            'businessId'    => $business_id,
+                            'userId'        => $user_id,
+                        ),
+                        'timeout' => 30,
+                    )
+                );
+
+                if ( ! is_wp_error( $response ) && wp_remote_retrieve_response_code( $response ) === 200 ) {
+                    break;
+                }
+                sleep( 1 );
+            }
 
             if ( is_wp_error( $response ) ) {
-                error_log( "WA_SYNC_ERROR: " . $response->get_error_message() );
-                break;
+                error_log( "[WA Sync] API Request Error: " . $response->get_error_message() );
+                return $response;
             }
-            
+
+            $response_code = wp_remote_retrieve_response_code( $response );
+            if ( $response_code >= 400 ) {
+                $error_body = wp_remote_retrieve_body( $response );
+                error_log( "[WA Sync] API Error (HTTP $response_code): $error_body" );
+                return new WP_Error( 'wa_sync_api_error', sprintf( __( 'API returned HTTP %d', 'whatsapp-connector' ), $response_code ) );
+            }
+
             $body = wp_remote_retrieve_body( $response );
             $data = json_decode( $body, true );
+
+            if ( ! $data ) {
+                error_log( "[WA Sync] Invalid API response (not JSON)." );
+                return new WP_Error( 'wa_sync_invalid_json', __( 'Invalid API response.', 'whatsapp-connector' ) );
+            }
 
             $templates_page = $data['result']['data'] ?? $data['Result']['data'] ?? null;
 
@@ -240,14 +252,14 @@ if ( ! function_exists( 'wa_sync_templates_handler' ) ) :
                 break;
             }
 
+            $counts['received'] += count( $templates_page );
+
             $first_id = $templates_page[0]['id'] ?? null;
             if ( $first_id && $first_id === $previous_first_id ) {
                 error_log( '[WA Sync] Duplicate page detected, stopping pagination.' );
                 break;
             }
             $previous_first_id = $first_id;
-
-            error_log( '[WA Sync] Found ' . count( $templates_page ) . " templates in page $page_count." );
 
             foreach ( $templates_page as $template ) {
                 $template_id   = $template['id'];
@@ -272,8 +284,28 @@ if ( ! function_exists( 'wa_sync_templates_handler' ) ) :
                         }
                         if ( 'HEADER' === $component['componentType'] ) {
                             $header_format = $component['componentFormat'] ?? '';
-                            if ( in_array($header_format, ['IMAGE', 'VIDEO', 'DOCUMENT']) ) {
-                                $media_handle = wp_json_encode( $component['componentData'] );
+                            if ( in_array( $header_format, [ 'IMAGE', 'VIDEO', 'DOCUMENT' ] ) ) {
+                                $media_data = $component['componentData'] ?? [];
+                                if ( is_array( $media_data ) ) {
+                                    $m_id   = $media_data['id'] ?? $media_data['document_id'] ?? $media_data['docId'] ?? $media_data['handle'] ?? '';
+                                    $m_link = $media_data['previewLink'] ?? $media_data['preview_link'] ?? $media_data['link'] ?? $media_data['url'] ?? '';
+
+                                    // Fallback for Meta API structure if nested in example
+                                    if ( empty( $m_id ) && ! empty( $component['example']['header_handle'][0] ) ) {
+                                        $m_id = $component['example']['header_handle'][0];
+                                    }
+
+                                    $media_handle = wp_json_encode( [
+                                        'document_id'  => $m_id,
+                                        'preview_link' => $m_link,
+                                    ] );
+                                } else {
+                                    // If it's just a string, treat it as the ID
+                                    $media_handle = wp_json_encode( [
+                                        'document_id'  => $media_data,
+                                        'preview_link' => '',
+                                    ] );
+                                }
                             } else {
                                 $header_text = $component['componentData'] ?? '';
                             }
@@ -295,7 +327,7 @@ if ( ! function_exists( 'wa_sync_templates_handler' ) ) :
                     $carousel_cards = $template['cards'];
                 }
 
-                $existing = $wpdb->get_var( $wpdb->prepare( "SELECT entity_id FROM $table_name WHERE template_id = %s", $template_id ) );
+                $existing = $wpdb->get_row( $wpdb->prepare( "SELECT entity_id, status FROM $table_name WHERE template_id = %s", $template_id ) );
 
                 $data_to_save = array(
                     'template_id'    => $template_id,
@@ -315,37 +347,62 @@ if ( ! function_exists( 'wa_sync_templates_handler' ) ) :
                 );
 
                 if ( $existing ) {
-                    $wpdb->update( $table_name, $data_to_save, array( 'entity_id' => $existing ) );
+                    error_log( "[WA Sync] Updating template: $template_name (ID: $template_id)" );
+                    $wpdb->update( $table_name, $data_to_save, array( 'entity_id' => $existing->entity_id ) );
+                    $counts['updated']++;
                 } else {
+                    error_log( "[WA Sync] Inserting new template: $template_name (ID: $template_id)" );
                     $wpdb->insert( $table_name, $data_to_save );
+                    $counts['inserted']++;
                 }
-                $synced_count++;
             }
 
-            // Handle pagination (cursor, metadata, or full-page fallback).
             $next_url = wa_get_template_sync_next_url( $api_base_url, $data, $next_url, $page_count, count( $templates_page ) );
 
-            if ( $next_url ) {
-                error_log( "[WA Sync] Next page URL: $next_url" );
-            } else {
-                $paging = ( $data['result'] ?? $data['Result'] ?? array() )['paging'] ?? array();
-                error_log( '[WA Sync] No more pages. Paging metadata: ' . wp_json_encode( $paging ) );
-            }
-
             // Limit loop safety
-            if ( $synced_count > 1000 ) {
+            if ( $counts['received'] > 1000 ) {
                 error_log( "[WA Sync] Safety limit reached (1000 templates). Stopping sync." );
                 break;
             }
         }
 
-        error_log( "[WA Sync] Sync completed. Total pages: $page_count, Total templates: $synced_count" );
+        $final_db_count = $wpdb->get_var( "SELECT COUNT(*) FROM $table_name" );
+        error_log( sprintf(
+            "[WA Sync] Sync completed. Received: %d, Inserted: %d, Updated: %d, Skipped: %d, Final DB Count: %d",
+            $counts['received'], $counts['inserted'], $counts['updated'], $counts['skipped'], $final_db_count
+        ) );
 
-        if ( $synced_count === 0 ) {
+        return $counts['inserted'] + $counts['updated'];
+    }
+endif;
+
+/**
+ * AJAX: Sync templates from API to local database.
+ */
+add_action( 'wp_ajax_wa_sync_templates', 'wa_sync_templates_handler' );
+
+if ( ! function_exists( 'wa_sync_templates_handler' ) ) :
+    /**
+     * Handle AJAX request to sync templates.
+     */
+    function wa_sync_templates_handler() {
+        if ( ! current_user_can( 'manage_woocommerce' ) ) {
+            wp_send_json_error( __( 'Unauthorized', 'whatsapp-connector' ) );
+        }
+
+        check_ajax_referer( 'wa_sync_templates', 'security' );
+
+        $result = wa_sync_templates();
+
+        if ( is_wp_error( $result ) ) {
+            wp_send_json_error( $result->get_error_message() );
+        }
+
+        if ( $result === 0 ) {
             wp_send_json_error( __( 'No templates found or synchronization failed.', 'whatsapp-connector' ) );
         }
 
-        wp_send_json_success( sprintf( __( 'Successfully synced %d templates.', 'whatsapp-connector' ), $synced_count ) );
+        wp_send_json_success( sprintf( __( 'Successfully synced %d templates.', 'whatsapp-connector' ), $result ) );
     }
 endif;
 
@@ -362,14 +419,18 @@ if ( ! function_exists( 'wa_save_builder_template_handler' ) ) :
             WA_Database::create_tables();
         }
 
-        check_ajax_referer( 'wa_save_builder_template', 'security' );
+        $nonce_valid = wp_verify_nonce( $_POST['security'] ?? '', 'wa_save_builder_template' );
+        if ( ! $nonce_valid ) {
+            error_log( '[WA Builder] Nonce FAILED. Received: ' . ( $_POST['security'] ?? '(empty)' ) . ' | User: ' . get_current_user_id() );
+            wp_send_json_error( __( 'Security check failed. Please refresh the page and try again.', 'whatsapp-connector' ), 403 );
+        }
 
         $hook            = sanitize_text_field( $_POST['hook'] ?? '' );
         $is_standalone   = isset($_POST['is_standalone']) && $_POST['is_standalone'] === 'yes';
         $entity_id       = intval( $_POST['entity_id'] ?? 0 );
         $template_name   = sanitize_text_field( $_POST['template_name'] ?? 'Unnamed' );
         $category        = sanitize_text_field( $_POST['category'] ?? 'UTILITY' );
-        $language        = get_locale(); // Enforce WP Store Language
+        $language        = sanitize_text_field( $_POST['language'] ?? get_locale() );
         $header_type     = strtoupper( sanitize_text_field( $_POST['header_type'] ?? 'TEXT' ) );
         $header_text     = sanitize_text_field( $_POST['header_text'] ?? '' );
         $header_handle   = sanitize_text_field( $_POST['header_handle'] ?? '' );
@@ -377,7 +438,18 @@ if ( ! function_exists( 'wa_save_builder_template_handler' ) ) :
         $body_template   = wp_unslash( $_POST['body_template'] ?? '' );
         $footer_template = sanitize_text_field( $_POST['footer_template'] ?? '' );
         $enable_buttons  = sanitize_text_field( $_POST['enable_buttons'] ?? 'yes' );
-        $buttons         = isset( $_POST['buttons'] ) && is_array( $_POST['buttons'] ) ? $_POST['buttons'] : [];
+
+        $buttons = [];
+        if ( isset( $_POST['buttons'] ) && is_array( $_POST['buttons'] ) ) {
+            $raw_buttons = wp_unslash( $_POST['buttons'] );
+            foreach ( $raw_buttons as $btn ) {
+                $buttons[] = [
+                    'type' => sanitize_text_field( $btn['type'] ?? 'URL' ),
+                    'text' => sanitize_text_field( $btn['text'] ?? '' ),
+                    'url'  => esc_url_raw( $btn['url'] ?? '' ),
+                ];
+            }
+        }
         
         $template_type   = strtoupper( sanitize_text_field( $_POST['template_type'] ?? 'TEXT' ) );
         $carousel_cards  = wp_unslash( $_POST['carousel_cards'] ?? '[]' );
@@ -467,6 +539,40 @@ if ( ! function_exists( 'wa_save_builder_template_handler' ) ) :
             $existing_api_id = get_option( "wa_template_{$hook}_assigned_id" );
         }
 
+        // Always check by template_name first — this catches renamed templates and
+        // prevents duplicates in both the settings-embed and admin-grid flows.
+        $name_match = $wpdb->get_row( $wpdb->prepare(
+            "SELECT entity_id, template_id FROM {$table_name} WHERE template_name = %s ORDER BY entity_id DESC LIMIT 1",
+            $template_name
+        ) );
+        if ( $name_match ) {
+            // Found by name → use this record for the update
+            if ( ! $entity_id ) {
+                $entity_id = (int) $name_match->entity_id;
+            }
+            // Prefer a real API ID (not a local placeholder) from the name match
+            if ( ( ! $existing_api_id || strpos( $existing_api_id, 'tpl_' ) === 0 )
+                 && $name_match->template_id
+                 && strpos( $name_match->template_id, 'tpl_' ) !== 0 ) {
+                $existing_api_id = $name_match->template_id;
+            }
+        }
+
+        // Fallback: check by language as well if still no real API ID
+        if ( ! $existing_api_id || strpos( $existing_api_id, 'tpl_' ) === 0 ) {
+            $lang_match = $wpdb->get_row( $wpdb->prepare(
+                "SELECT entity_id, template_id FROM {$table_name} WHERE template_name = %s AND language = %s AND template_id NOT LIKE 'tpl_%%' ORDER BY entity_id DESC LIMIT 1",
+                $template_name,
+                $language
+            ) );
+            if ( $lang_match ) {
+                $existing_api_id = $lang_match->template_id;
+                if ( ! $entity_id ) {
+                    $entity_id = (int) $lang_match->entity_id;
+                }
+            }
+        }
+
         $method = 'POST';
         if ( $existing_api_id && strpos( $existing_api_id, 'tpl_' ) !== 0 ) {
             $method  = 'PUT';
@@ -496,19 +602,23 @@ if ( ! function_exists( 'wa_save_builder_template_handler' ) ) :
                 'userId'        => $user_id,
             ],
             'body'    => wp_json_encode( $payload ),
-            'timeout' => 30,
+            'timeout' => 10,
         ] );
 
         if ( is_wp_error( $response ) ) {
-            error_log( "[WA Builder] API Error: " . $response->get_error_message() );
-            // Continue to save locally
+            $err_msg = $response->get_error_message();
+            error_log( "[WA Builder] API Error: " . $err_msg );
+            wp_send_json_success( [
+                'message'    => __( 'Template saved locally. API unreachable: ', 'whatsapp-connector' ) . $err_msg,
+                'api_synced' => false,
+            ] );
         }
 
         $response_code = wp_remote_retrieve_response_code( $response );
         $body          = wp_remote_retrieve_body( $response );
         $data          = json_decode( $body, true );
 
-        error_log( "[WA Builder] API Response ({$response_code}): {$body}" );
+        error_log( "[WA Builder] API Response ({$response_code}): " . substr( $body, 0, 500 ) );
 
         // Extract API template ID (the platform returns it under result.id or result.templateId)
         $api_template_id = $data['result']['id'] ?? $data['result']['templateId'] ?? $data['id'] ?? null;
@@ -520,6 +630,11 @@ if ( ! function_exists( 'wa_save_builder_template_handler' ) ) :
                 // Look into component data or other fields if available in $data on conflict
                 $api_template_id = $data['error']['id'] ?? $data['error']['templateId'] ?? null;
             }
+        }
+
+        // Fallback to existing API ID if not returned in response (e.g. for PUT requests or conflicts)
+        if ( ! $api_template_id && $existing_api_id && strpos( $existing_api_id, 'tpl_' ) !== 0 ) {
+            $api_template_id = $existing_api_id;
         }
 
         if ( $api_template_id && ! $is_standalone ) {
@@ -568,10 +683,26 @@ if ( ! function_exists( 'wa_save_builder_template_handler' ) ) :
             $status = 'APPROVED'; // If it already exists, it might be approved or pending. We'll set it to a state that allows it to be used.
         }
         $existing = null;
-        if ( $is_standalone && $entity_id > 0 ) {
+
+        // 1. If we already resolved an entity_id (standalone edit or name-match above), use it.
+        if ( $entity_id > 0 ) {
             $existing = $entity_id;
-        } else {
-            $existing = $wpdb->get_var( $wpdb->prepare( "SELECT entity_id FROM {$table_name} WHERE template_id = %s", $template_id ) );
+        }
+
+        // 2. Check by template_name — the primary upsert key for both embed & standalone.
+        if ( ! $existing ) {
+            $existing = $wpdb->get_var( $wpdb->prepare(
+                "SELECT entity_id FROM {$table_name} WHERE template_name = %s ORDER BY entity_id DESC LIMIT 1",
+                $template_name
+            ) );
+        }
+
+        // 3. Fallback: check by template_id (API ID).
+        if ( ! $existing && $template_id ) {
+            $existing = $wpdb->get_var( $wpdb->prepare(
+                "SELECT entity_id FROM {$table_name} WHERE template_id = %s",
+                $template_id
+            ) );
         }
 
         $db_data = [
@@ -677,30 +808,38 @@ endif;
 if ( ! function_exists( 'wa_build_template_api_payload' ) ) :
     function wa_build_template_api_payload( $name, $category, $language, $header_type, $header_text, $body, $footer, $buttons = [], $header_handle = '', $header_url = '', $template_type = 'STANDARD', $carousel_cards_json = '[]' ) {
 
-        // --- Helper: convert {{var_name}} → {{1}}, {{2}}, ... and collect param names ---
-        $process_vars = function( string $text, bool $is_url = false ) use ( &$counter_ref ) {
-            $params  = [];
-            $varMap  = [];
-            $counter = 0;
+        $varMap  = [];
+        $counter = 0;
 
+        $process_vars = function( string $text, bool $is_url = false ) use ( &$counter, &$varMap ) {
+            $text = trim( $text );
+            if ( $text === '' ) {
+                return [ 'text' => '', 'params' => [] ];
+            }
+
+            $text = preg_replace( '/\{\{\#items\}\}[\s\S]*?\{\{\/items\}\}/', '{{items_summary}}', $text );
+
+            $params = [];
             $transformed = preg_replace_callback(
                 '/\{\{\s*(?:var\s+)?(.*?)\s*\}\}/',
                 function ( $m ) use ( &$params, &$varMap, &$counter, $is_url ) {
-                    $original = trim( $m[1] );
-                    $prop     = $original;
+                    $prop = trim( $m[1] );
                     if ( strpos( $prop, '.' ) !== false ) {
                         $parts = explode( '.', $prop );
                         $prop  = end( $parts );
                     }
-                    $prop     = str_replace( '()', '', $prop );
-                    $clean    = preg_replace( '/[^a-zA-Z0-9_]/', '', $prop ) ?: 'var';
+                    $prop  = str_replace( '()', '', $prop );
+                    $clean = preg_replace( '/[^a-zA-Z0-9_]/', '', $prop );
+                    if ( empty( $clean ) ) {
+                        $clean = 'var';
+                    }
 
                     if ( $is_url ) {
-                        if ( ! isset( $varMap[ $clean ] ) ) {
-                            $varMap[ $clean ] = $clean;
-                            $params[]         = $clean;
+                        $sampleVal = $clean; // Fallback text for url mapping
+                        if ( ! in_array( $sampleVal, $params, true ) ) {
+                            $params[] = $sampleVal;
                         }
-                        return '{{' . $varMap[ $clean ] . '}}';
+                        return '{{' . $clean . '}}';
                     }
 
                     if ( ! isset( $varMap[ $clean ] ) ) {
@@ -713,145 +852,211 @@ if ( ! function_exists( 'wa_build_template_api_payload' ) ) :
                 $text
             );
 
-            return [ 'text' => trim( $transformed ), 'params' => $params ];
+            // Clean text formatting similar to Magento
+            $transformed = preg_replace( '/[ \t]{2,}/', ' ', $transformed );
+            $lines = explode( "\n", $transformed );
+            $cleanLines = [];
+            foreach ( $lines as $line ) {
+                $trimmed = trim( $line );
+                if ( $trimmed !== '' ) {
+                    $cleanLines[] = $trimmed;
+                }
+            }
+
+            return [ 'text' => implode( "\n", $cleanLines ), 'params' => $params ];
         };
 
-        // Normalise template name: lowercase, underscores, no specials
-        $safe_name = strtolower( preg_replace( '/[^a-z0-9_]/i', '_', $name ) );
+        $safe_name = strtolower( preg_replace( '/[^a-z0-9_]/i', '_', trim( $name ) ) );
         $safe_name = preg_replace( '/_+/', '_', $safe_name );
 
-        // Determine API type field (mirrors Magento MetaTemplatePayloadBuilder)
         $type = strtoupper( $template_type );
-        if ( $type === 'CAROUSEL' ) {
-            $api_type = 'CAROUSEL';
-        } elseif ( in_array( strtoupper( $header_type ), [ 'IMAGE', 'VIDEO', 'DOCUMENT' ] ) ) {
-            $api_type = strtoupper( $header_type );
-        } else {
-            $api_type = 'TEXT';
+        if ( $type === 'STANDARD' || $type === 'MEDIA' || empty($type) || $type === 'TEXT' ) {
+            $h_format = strtoupper( $header_type ?: 'TEXT' );
+            if ( in_array( $h_format, ['IMAGE', 'VIDEO', 'DOCUMENT'] ) ) {
+                $type = $h_format;
+            } else {
+                $type = 'TEXT';
+            }
         }
 
         $payload = [
             'name'     => $safe_name,
-            'category' => strtoupper( $category ),
-            'type'     => $api_type,
-            'language' => $language,
+            'category' => strtoupper( $category ?: 'UTILITY' ),
+            'type'     => $type,
+            'language' => $language ?: 'en_US',
         ];
 
-        // --- CAROUSEL ---
+
+
+        if ( $template_type !== 'CAROUSEL' ) {
+            // 1. HEADER (Root header only for non-carousel. Carousel headers are inside cards)
+            $h_format = strtoupper( $header_type ?: 'TEXT' );
+            if ( $h_format === 'TEXT' && trim( $header_text ) !== '' ) {
+                $payload['header'] = [
+                    'type'   => 'HEADER',
+                    'format' => 'TEXT',
+                    'text'   => trim( $header_text ),
+                ];
+            } elseif ( in_array( $h_format, [ 'IMAGE', 'VIDEO', 'DOCUMENT' ] ) ) {
+                $header_arr = [
+                    'type'   => 'HEADER',
+                    'format' => $h_format,
+                ];
+                if ( trim( $header_handle ) !== '' ) {
+                    $header_arr['media'] = [ 'id' => trim( $header_handle ) ];
+                }
+                $payload['header'] = $header_arr;
+            }
+
+            // 4. BUTTONS (Root buttons only for non-carousel. Carousel buttons are inside cards)
+            if ( ! empty( $buttons ) ) {
+                $button_list = [];
+                foreach ( $buttons as $btn ) {
+                    $btn_type = strtoupper( $btn['type'] ?? 'QUICK_REPLY' );
+                    $btn_text = trim( $btn['text'] ?? '' );
+                    
+                    if ( empty( $btn_text ) && $btn_type !== 'CATALOG' ) {
+                        continue;
+                    }
+                    
+                    $btn_entry = [ 'type' => $btn_type ];
+                    if ( ! empty( $btn_text ) ) {
+                        $btn_entry['text'] = $btn_text;
+                    }
+
+                    if ( $btn_type === 'URL' ) {
+                        $url_val = trim( $btn['url'] ?? $btn['button_url'] ?? $btn['value'] ?? '' );
+                        if ( empty( $url_val ) ) {
+                            continue;
+                        }
+                        $url_res          = $process_vars( $url_val, true );
+                        $btn_entry['url'] = $url_res['text'];
+                        if ( ! empty( $url_res['params'] ) ) {
+                            $btn_entry['param'] = $url_res['params'];
+                        }
+                    } elseif ( in_array( $btn_type, ['PHONE_NUMBER', 'PHONE'] ) ) {
+                        $btn_entry['type'] = 'PHONE_NUMBER';
+                        $phone = trim( $btn['phone_number'] ?? $btn['value'] ?? '' );
+                        if ( empty( $phone ) ) {
+                            continue;
+                        }
+                        $btn_entry['phone_number'] = $phone;
+                    }
+
+                    $button_list[] = $btn_entry;
+                }
+
+                if ( ! empty( $button_list ) ) {
+                    $payload['buttons'] = $button_list;
+                }
+            }
+        }
+
+        // 2. BODY (Required for BOTH Standard and Carousel templates at root)
+        if ( trim( $body ) !== '' ) {
+            $body_res = $process_vars( $body );
+            if ( $body_res['text'] !== '' ) {
+                $payload['body'] = [
+                    'type'   => 'BODY',
+                    'format' => 'TEXT',
+                    'text'   => $body_res['text'],
+                ];
+                if ( ! empty( $body_res['params'] ) ) {
+                    $payload['body']['param'] = $body_res['params'];
+                }
+            }
+        }
+
+        // 3. FOOTER (Disabled for Carousel based on user request)
+        if ( $template_type !== 'CAROUSEL' && trim( $footer ) !== '' ) {
+            $payload['footer'] = [
+                'type' => 'FOOTER',
+                'text' => trim( $footer ),
+            ];
+        }
+
         if ( $template_type === 'CAROUSEL' ) {
+            // === CAROUSEL PAYLOAD ===
+            // Backend DTO key is `carousel` (NOT `cards`).
+            // See: CreateTemplateDTO.ts line 55 — carousel: z.array(z.object({header, body, buttons}))
+            // The backend maps dto.carousel -> CAROUSEL component -> cleanComponentsForMeta -> Meta API
+            $carousel   = [];
             $cards_data = json_decode( $carousel_cards_json, true );
             if ( ! is_array( $cards_data ) ) {
                 $cards_data = [];
             }
 
-            $cards = [];
             foreach ( $cards_data as $card ) {
-                $c_header_type   = strtoupper( $card['header_type'] ?? 'IMAGE' );
-                $c_header_handle = $card['header_handle'] ?? '';
+                $card_entry = [];
 
-                $card_entry = [
-                    'header' => [ 'type' => 'HEADER', 'format' => $c_header_type ],
-                    'body'   => [ 'type' => 'BODY', 'format' => 'TEXT', 'text' => $card['body'] ?? '' ],
-                ];
-
-                if ( $c_header_handle ) {
-                    $card_entry['header']['media'] = [ 'id' => $c_header_handle ];
+                // Card HEADER
+                $c_header_type   = strtoupper( $card['header_type'] ?? ( $card['header_format'] ?? 'IMAGE' ) );
+                $c_header_handle = trim( $card['header_handle'] ?? '' );
+                if ( in_array( $c_header_type, [ 'IMAGE', 'VIDEO', 'DOCUMENT' ], true ) ) {
+                    $card_header = [
+                        'type'   => 'HEADER',
+                        'format' => $c_header_type,
+                    ];
+                    if ( $c_header_handle !== '' ) {
+                        // The backend uses documentId or media.id to fetch the header handle
+                        $card_header['documentId'] = $c_header_handle;
+                        $card_header['media']      = [ 'id' => $c_header_handle ];
+                    }
+                    $card_entry['header'] = $card_header;
                 }
 
+                // Card BODY — DTO: { type, text, example? }
+                $card_body_text = trim( $card['body'] ?? '' );
+                if ( $card_body_text !== '' ) {
+                    $card_body_res = $process_vars( $card_body_text );
+                    $card_body_arr = [
+                        'type' => 'BODY',
+                        'text' => $card_body_res['text'],
+                    ];
+                    if ( ! empty( $card_body_res['params'] ) ) {
+                        // Backend reads body.param for positional params
+                        $card_body_arr['param'] = $card_body_res['params'];
+                    }
+                    $card_entry['body'] = $card_body_arr;
+                }
+
+                // Card BUTTONS — DTO: ButtonSchema array
                 $card_buttons = [];
                 foreach ( $card['buttons'] ?? [] as $btn ) {
-                    $btn_type  = strtoupper( $btn['type'] ?? 'URL' );
-                    $btn_entry = [ 'type' => $btn_type, 'text' => $btn['text'] ?? '' ];
+                    $btn_type = strtoupper( $btn['type'] ?? 'QUICK_REPLY' );
+                    $btn_text = trim( $btn['text'] ?? '' );
+                    if ( empty( $btn_text ) ) {
+                        continue;
+                    }
+                    $btn_entry = [ 'type' => $btn_type, 'text' => $btn_text ];
                     if ( $btn_type === 'URL' ) {
-                        $btn_entry['url'] = $btn['button_url'] ?? '';
-                    } elseif ( $btn_type === 'PHONE_NUMBER' ) {
-                        $btn_entry['phone_number'] = $btn['phone_number'] ?? '';
+                        $url_val = trim( $btn['button_url'] ?? $btn['url'] ?? '' );
+                        if ( ! empty( $url_val ) ) {
+                            $url_res          = $process_vars( $url_val, true );
+                            $btn_entry['url'] = $url_res['text'];
+                            if ( ! empty( $url_res['params'] ) ) {
+                                $btn_entry['example'] = $url_res['params'];
+                            }
+                        }
+                    } elseif ( in_array( $btn_type, [ 'PHONE_NUMBER', 'PHONE' ] ) ) {
+                        $btn_entry['type']         = 'PHONE_NUMBER';
+                        $btn_entry['phone_number'] = trim( $btn['phone_number'] ?? $btn['value'] ?? '' );
                     }
                     $card_buttons[] = $btn_entry;
                 }
+
                 if ( ! empty( $card_buttons ) ) {
                     $card_entry['buttons'] = $card_buttons;
                 }
 
-                $cards[] = $card_entry;
-            }
-
-            $payload['cards'] = $cards;
-            return $payload;
-        }
-
-        // --- STANDARD Template ---
-
-        // HEADER
-        $header_type_upper = strtoupper( $header_type );
-        if ( $header_type_upper && $header_type_upper !== 'NONE' ) {
-            $header = [ 'type' => 'HEADER', 'format' => $header_type_upper ];
-            if ( $header_type_upper === 'TEXT' && $header_text ) {
-                $header['text'] = $header_text;
-            } elseif ( in_array( $header_type_upper, [ 'IMAGE', 'VIDEO', 'DOCUMENT' ] ) ) {
-                if ( $header_handle ) {
-                    $header['media'] = [ 'id' => $header_handle ];
+                if ( ! empty( $card_entry ) ) {
+                    $carousel[] = $card_entry;
                 }
             }
-            $payload['header'] = $header;
-        }
 
-        // BODY — convert {{var}} → {{1}} and collect params
-        if ( $body ) {
-            // Collapse items loop into a single {{items_summary}} var before numbering
-            $body_clean  = preg_replace( '/\{\{#items\}\}[\s\S]*?\{\{\/items\}\}/', '{{items_summary}}', $body );
-            $body_result = $process_vars( $body_clean );
-
-            $body_section = [
-                'type'   => 'BODY',
-                'format' => 'TEXT',
-                'text'   => $body_result['text'],
-            ];
-            if ( ! empty( $body_result['params'] ) ) {
-                $body_section['param'] = $body_result['params'];
-            }
-            $payload['body'] = $body_section;
-        }
-
-        // FOOTER
-        if ( $footer ) {
-            $payload['footer'] = [ 'type' => 'FOOTER', 'text' => $footer ];
-        }
-
-        // BUTTONS
-        if ( ! empty( $buttons ) ) {
-            $button_list = [];
-            foreach ( $buttons as $btn ) {
-                $btn_type = strtoupper( $btn['type'] ?? 'QUICK_REPLY' );
-                $btn_text = trim( $btn['text'] ?? '' );
-                if ( empty( $btn_text ) && $btn_type !== 'CATALOG' ) {
-                    continue;
-                }
-                $btn_entry = [ 'type' => $btn_type ];
-                if ( $btn_text ) {
-                    $btn_entry['text'] = $btn_text;
-                }
-                if ( $btn_type === 'URL' ) {
-                    $url_val = trim( $btn['url'] ?? $btn['button_url'] ?? '' );
-                    if ( empty( $url_val ) ) {
-                        continue;
-                    }
-                    $url_result        = $process_vars( $url_val, true );
-                    $btn_entry['url']  = $url_result['text'];
-                    if ( ! empty( $url_result['params'] ) ) {
-                        $btn_entry['param'] = $url_result['params'];
-                    }
-                } elseif ( $btn_type === 'PHONE_NUMBER' ) {
-                    $phone = trim( $btn['phone_number'] ?? $btn['url'] ?? '' );
-                    if ( empty( $phone ) ) {
-                        continue;
-                    }
-                    $btn_entry['phone_number'] = $phone;
-                }
-                $button_list[] = $btn_entry;
-            }
-            if ( ! empty( $button_list ) ) {
-                $payload['buttons'] = $button_list;
+            if ( ! empty( $carousel ) ) {
+                // Use `carousel` key — matches DTO field name 
+                $payload['carousel'] = $carousel;
             }
         }
 
@@ -975,7 +1180,7 @@ if ( ! function_exists( 'wa_save_campaign_handler' ) ) :
             $wpdb->update( $table, $data, [ 'campaign_id' => $campaign_id ] );
             
             if ( $api_error ) {
-                wp_send_json_error( 'Saved locally but API update failed: ' . $api_error );
+                wp_send_json_error( __( 'Saved locally but API update failed: ', 'whatsapp-connector' ) . $api_error );
             } else {
                 wp_send_json_success( [ 'message' => __( 'Campaign updated successfully on Meta API.', 'whatsapp-connector' ), 'campaign_id' => $campaign_id ] );
             }
@@ -1023,7 +1228,7 @@ if ( ! function_exists( 'wa_save_campaign_handler' ) ) :
             }
 
             if ( $api_error ) {
-                wp_send_json_error( 'Saved locally but Meta API returned error: ' . $api_error );
+                wp_send_json_error( __( 'Saved locally but Meta API returned error: ', 'whatsapp-connector' ) . $api_error );
             } else {
                 wp_send_json_success( [ 'message' => __( 'Campaign created and scheduled on Meta API successfully.', 'whatsapp-connector' ), 'campaign_id' => $new_id ] );
             }

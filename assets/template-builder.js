@@ -8,9 +8,43 @@ jQuery(document).ready(function ($) {
         var footerText = $('#wa_footer_text').val() || '';
         var bodyText = $('#wa_message_body').val() || '';
         var hookType = $('#wa_current_hook').val() || 'order_shipment';
+        var templateType = $('#wa_template_type').val() || 'STANDARD';
 
-        $('#preview_header').text(headerText);
+        if (templateType === 'CAROUSEL') {
+            footerText = '';
+        }
+
+        if (templateType === 'TEXT' || templateType === 'STANDARD') {
+            $('#preview_header').text(headerText).css({
+                'background': 'none',
+                'padding': '0',
+                'height': 'auto',
+                'border-radius': '0',
+                'margin-bottom': '0'
+            });
+        } else if (templateType === 'IMAGE' || templateType === 'VIDEO' || templateType === 'DOCUMENT') {
+            var mediaUrl = $('#wa_header_media_url').val();
+            if (mediaUrl) {
+                if (templateType === 'IMAGE') {
+                    $('#preview_header').html('<img src="' + mediaUrl + '" style="width:100%; max-height:200px; object-fit:cover; border-radius:8px 8px 0 0; margin-bottom: -15px;">');
+                } else if (templateType === 'VIDEO') {
+                    $('#preview_header').html('<video src="' + mediaUrl + '" style="width:100%; max-height:200px; border-radius:8px 8px 0 0; margin-bottom: -15px;" controls></video>');
+                } else {
+                    $('#preview_header').html('<div style="background:#e1e1e1; padding:20px; text-align:center; border-radius:8px 8px 0 0; margin-bottom: -15px;">📄 Document</div>');
+                }
+            } else {
+                $('#preview_header').html('<div style="background:#ddd; height:120px; display:flex; align-items:center; justify-content:center; color:#555; border-radius:8px 8px 0 0; margin-bottom: -15px;">' + templateType + ' Placeholder</div>');
+            }
+        } else if (templateType === 'CAROUSEL') {
+            $('#preview_header').empty(); // Carousel has no main header
+        }
         $('#preview_footer').text(footerText);
+
+        if (footerText) {
+            $('#preview_footer').show();
+        } else {
+            $('#preview_footer').hide();
+        }
 
         // Demo value replacements
         bodyText = bodyText.replace(/\{\{customer_firstname\}\}/g, 'Zubair');
@@ -42,21 +76,57 @@ jQuery(document).ready(function ($) {
         bodyText = bodyText.replace(/\n/g, '<br>');
         $('#preview_body').html(bodyText);
 
-        // Buttons
-        if ($('#wa_enable_buttons').is(':checked')) {
-            var buttonsHTML = '';
-            $('.wa-button-item').each(function () {
-                var btnText = $(this).find('.wa-button-text').val() || 'Button';
-                buttonsHTML += '<div class="wa-preview-btn"><span class="wa-btn-icon">&#128279;</span> ' + btnText + '</div>';
-            });
-            $('#preview_buttons').html(buttonsHTML).show();
-        } else {
+        if (templateType === 'CAROUSEL') {
             $('#preview_buttons').hide();
+            var cardsHtml = '<div style="display:flex; overflow-x:auto; gap:8px; margin-top:10px; padding-bottom:5px;">';
+            $('.wa-carousel-card').each(function () {
+                var $c = $(this);
+                var cHeaderType = $c.find('.wa-card-header-type').val();
+                var cHeaderUrl = $c.find('.wa-card-header-url').val();
+                var cBody = $c.find('.wa-card-body').val();
+
+                var mediaStr = '';
+                if (cHeaderType === 'IMAGE' && cHeaderUrl) {
+                    mediaStr = '<img src="' + cHeaderUrl + '" style="width:100%; height:80px; object-fit:cover; border-radius:8px 8px 0 0;">';
+                } else if (cHeaderType === 'VIDEO' && cHeaderUrl) {
+                    mediaStr = '<div style="background:#000; height:80px; display:flex; align-items:center; justify-content:center; color:#fff; border-radius:8px 8px 0 0;">▶ Video</div>';
+                } else {
+                    mediaStr = '<div style="background:#ddd; height:80px; display:flex; align-items:center; justify-content:center; color:#666; font-size:10px; border-radius:8px 8px 0 0;">No Media</div>';
+                }
+
+                var btnsStr = '';
+                $c.find('.wa-card-button-item').each(function () {
+                    var bText = $(this).find('.wa-card-btn-text').val() || 'Button';
+                    btnsStr += '<div style="color:#007bff; text-align:center; padding:5px 0; border-top:1px solid #eee; font-size:11px;">' + bText + '</div>';
+                });
+
+                cardsHtml += '<div style="flex:0 0 140px; border:1px solid #eee; border-radius:8px; background:#fff; overflow:hidden;">' +
+                    mediaStr +
+                    '<div style="padding:6px; font-size:11px; white-space:normal; overflow:hidden; text-overflow:ellipsis; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical;">' + (cBody || '...') + '</div>' +
+                    btnsStr +
+                    '</div>';
+            });
+            cardsHtml += '</div>';
+            $('#preview_body').append(cardsHtml);
+        } else {
+            // Buttons
+            if ($('#wa_enable_buttons').is(':checked')) {
+                var buttonsHTML = '';
+                $('.wa-button-item:visible').each(function () {
+                    var btnText = $(this).find('.wa-button-text').val();
+                    if (btnText) {
+                        buttonsHTML += '<div class="wa-preview-btn"><span class="wa-btn-icon">&#128279;</span> ' + btnText + '</div>';
+                    }
+                });
+                $('#preview_buttons').html(buttonsHTML).show();
+            } else {
+                $('#preview_buttons').hide();
+            }
         }
     }
 
     $('#wa_header_text, #wa_message_body, #wa_footer_text').on('input', updatePreview);
-    $('#wa_enable_buttons').on('change', function() {
+    $('#wa_enable_buttons').on('change', function () {
         if ($(this).is(':checked')) {
             $('#wa_buttons_row').show();
         } else {
@@ -67,8 +137,19 @@ jQuery(document).ready(function ($) {
 
     $('#wa_template_type').on('change', function () {
         var type = $(this).val();
+
+        // Auto-set Marketing for Media Templates
+        if (['IMAGE', 'VIDEO', 'DOCUMENT'].includes(type)) {
+            $('#wa_template_category').val('MARKETING');
+            $('#wa_category_notice_row').show();
+        } else {
+            $('#wa_category_notice_row').hide();
+        }
+
         if (type === 'CAROUSEL') {
             $('.wa-standard-row').hide();
+            // Carousel still needs a root Body
+            $('#wa_message_body').closest('tr').show();
             $('#wa_carousel_row').show();
             // Load from RAW_CAROUSEL_CARDS if empty
             if ($('.wa-carousel-card').length === 0) {
@@ -99,10 +180,6 @@ jQuery(document).ready(function ($) {
         updatePreview();
     });
 
-    // Manually trigger initial state to respect saved values
-    $('#wa_template_type').trigger('change');
-    $('#wa_header_type').trigger('change');
-
     $('#wa_header_type').on('change', function () {
         var type = $(this).val();
         if (type === 'TEXT') {
@@ -116,6 +193,12 @@ jQuery(document).ready(function ($) {
             $('#wa_header_media_row').show();
         }
     });
+
+    // Manually trigger initial state to respect saved values
+    $('#wa_template_type').trigger('change');
+    $('#wa_header_type').trigger('change');
+
+    $(document).on('input change', '.wa-card-body, .wa-card-btn-text, .wa-card-header-type, .wa-card-header-url', updatePreview);
 
 
     var custom_uploader;
@@ -157,6 +240,7 @@ jQuery(document).ready(function ($) {
                     $('#wa_header_media_url').val(response.data.preview_link);
                     $('#wa_media_status').text('Upload Complete ✅').css('color', 'green');
                     $('#wa_media_preview').html('<a href="' + response.data.preview_link + '" target="_blank">Preview Uploaded File</a>');
+                    updatePreview();
                 } else {
                     $('#wa_media_status').text('Failed: ' + response.data).css('color', 'red');
                 }
@@ -170,7 +254,7 @@ jQuery(document).ready(function ($) {
         custom_uploader.open();
     });
 
-    $(document).on('input', '.wa-button-text', updatePreview);
+    $(document).on('input', '.wa-button-text, .wa-button-url', updatePreview);
     $(document).on('change', '.wa-button-type', updatePreview);
 
     $('#wa_add_button').on('click', function () {
@@ -212,8 +296,17 @@ jQuery(document).ready(function ($) {
         var $card = $(tmpl);
         $card.find('.card-num').text(numCards + 1);
 
+        // Initial visibility for upload row
+        $card.find('.wa-card-header-type').on('change', function () {
+            if ($(this).val() === 'TEXT') {
+                $card.find('.wa-card-media-upload-row').hide();
+            } else {
+                $card.find('.wa-card-media-upload-row').show();
+            }
+        }).trigger('change');
+
         if (data) {
-            $card.find('.wa-card-header-type').val(data.header_type || 'IMAGE');
+            $card.find('.wa-card-header-type').val(data.header_type || 'IMAGE').trigger('change');
             $card.find('.wa-card-header-handle').val(data.header_handle || '');
             $card.find('.wa-card-header-url').val(data.header_image || '');
             if (data.header_handle || data.header_image) {
@@ -316,6 +409,7 @@ jQuery(document).ready(function ($) {
                     $card.find('.wa-card-header-handle').val(response.data.document_id);
                     $card.find('.wa-card-header-url').val(response.data.preview_link);
                     $card.find('.wa-card-media-status').html('<a href="' + response.data.preview_link + '" target="_blank">View File ✅</a>').css('color', 'green');
+                    updatePreview();
                 } else {
                     $card.find('.wa-card-media-status').text('Failed').css('color', 'red');
                 }
@@ -327,52 +421,15 @@ jQuery(document).ready(function ($) {
         uploader.open();
     });
 
-    // Variable Popup Logic
-    $('#wa_insert_variable').on('click', function (e) {
-        e.stopPropagation();
-        $('#wa_variable_menu').toggle();
-    });
-
-    $(document).on('click', function (e) {
-        if (!$(e.target).closest('.wa-variable-inserter').length) {
-            $('#wa_variable_menu').hide();
-        }
-    });
-
-    $('.wa-premium-variable-menu').on('click', function (e) {
-        e.stopPropagation();
-    });
-
-    // Tab switching
-    $('.wa-var-tab-btn').on('click', function () {
-        var targetId = $(this).data('target');
-        $('.wa-var-tab-btn').removeClass('active');
-        $('.wa-var-panel').removeClass('active');
-
-        $(this).addClass('active');
-        $('#' + targetId).addClass('active');
-    });
-
-    // Insert variable
-    $('.wa-var-item').on('click', function (e) {
-        e.preventDefault();
-        var varString = $(this).data('val');
-
-        var textarea = $('#wa_message_body')[0];
-        var start = textarea.selectionStart;
-        var end = textarea.selectionEnd;
-
-        textarea.value = textarea.value.substring(0, start) + varString + textarea.value.substring(end);
-        textarea.selectionStart = textarea.selectionEnd = start + varString.length;
-        textarea.focus();
-
-        $('#wa_variable_menu').hide();
-        updatePreview();
-    });
-
     $('#wa_save_template').on('click', function () {
         var $btn = $(this);
-        $btn.text('Saving...').prop('disabled', true);
+        var $status = $('#wa_save_status');
+
+        $btn.prop('disabled', true);
+        $btn.find('.wa-save-label').text('Saving…');
+        $btn.find('.wa-save-spinner').show();
+        $btn.find('.wa-save-icon').hide();
+        $status.text('').removeClass('wa-status-ok wa-status-warn wa-status-err');
 
         var templateData = {
             action: 'wa_save_builder_template',
@@ -382,6 +439,8 @@ jQuery(document).ready(function ($) {
             hook: $('#wa_current_hook').val() || 'marketing',
             template_name: $('#wa_template_name').val() || 'Unnamed',
             template_type: $('#wa_template_type').val() || 'STANDARD',
+            category: $('#wa_template_category').val() || 'MARKETING',
+            language: $('#wa_language_code').val() || 'en_US',
             header_type: $('#wa_header_type').val(),
             header_text: $('#wa_header_text').val(),
             header_handle: $('#wa_header_media_handle').val(),
@@ -392,16 +451,19 @@ jQuery(document).ready(function ($) {
             buttons: []
         };
 
-        if (templateData.template_type === 'STANDARD') {
-            $('.wa-button-item').each(function () {
-                templateData.buttons.push({
-                    type: $(this).find('.wa-button-type').val(),
-                    text: $(this).find('.wa-button-text').val(),
-                    url: $(this).find('.wa-button-url').val()
-                });
+        if (templateData.template_type !== 'CAROUSEL') {
+            $('.wa-button-item:visible').each(function () {
+                var textVal = $(this).find('.wa-button-text').val() || '';
+                var urlVal = $(this).find('.wa-button-url').val() || '';
+                if (textVal) {
+                    templateData.buttons.push({
+                        type: $(this).find('.wa-button-type').val(),
+                        text: textVal,
+                        url: urlVal
+                    });
+                }
             });
         } else {
-            // Parse CAROUSEL cards
             templateData.carousel_cards = [];
             $('.wa-carousel-card').each(function () {
                 var $card = $(this);
@@ -412,7 +474,6 @@ jQuery(document).ready(function ($) {
                     body: $card.find('.wa-card-body').val(),
                     buttons: []
                 };
-
                 $card.find('.wa-card-button-item').each(function () {
                     cardObj.buttons.push({
                         type: $(this).find('.wa-card-btn-type').val(),
@@ -421,7 +482,6 @@ jQuery(document).ready(function ($) {
                         phone_number: $(this).find('.wa-card-btn-type').val() === 'PHONE_NUMBER' ? $(this).find('.wa-card-btn-val').val() : ''
                     });
                 });
-
                 templateData.carousel_cards.push(cardObj);
             });
             templateData.carousel_cards = JSON.stringify(templateData.carousel_cards);
@@ -430,19 +490,22 @@ jQuery(document).ready(function ($) {
         $.post(ajaxurl, templateData, function (response) {
             if (response.success) {
                 var msg = response.data.message || 'Template saved successfully!';
-                var apiIcon = response.data.api_synced ? '✅ ' : '⚠️ ';
-                alert(apiIcon + msg);
                 if (response.data.api_synced) {
-                    // Refresh the page after a brief delay so the grid picks up the new template
-                    setTimeout(function () { window.location.reload(); }, 1500);
+                    $status.text('✅ ' + msg).addClass('wa-status-ok');
+                    setTimeout(function () { window.location.reload(); }, 2000);
+                } else {
+                    $status.text('⚠️ ' + msg).addClass('wa-status-warn');
                 }
             } else {
-                alert('❌ Error: ' + (response.data || 'Unknown error'));
+                $status.text('❌ ' + (response.data || 'Unknown error')).addClass('wa-status-err');
             }
         }).fail(function () {
-            alert('Server error while saving template.');
+            $status.text('❌ Server error while saving.').addClass('wa-status-err');
         }).always(function () {
-            $btn.text('Save Template').prop('disabled', false);
+            $btn.prop('disabled', false);
+            $btn.find('.wa-save-label').text('Save Template');
+            $btn.find('.wa-save-spinner').hide();
+            $btn.find('.wa-save-icon').show();
         });
     });
 

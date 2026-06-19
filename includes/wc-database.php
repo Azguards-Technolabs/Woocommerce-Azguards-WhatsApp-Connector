@@ -27,7 +27,7 @@ class WA_Database {
             footer text DEFAULT NULL,
             buttons text DEFAULT NULL,
             carousel_cards text DEFAULT NULL,
-            media_handle varchar(255) DEFAULT NULL,
+            media_handle text DEFAULT NULL,
             status varchar(50) NOT NULL DEFAULT 'PENDING',
             created_at datetime DEFAULT CURRENT_TIMESTAMP,
             updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -47,6 +47,7 @@ class WA_Database {
             template_entity_id bigint(20) NOT NULL,
             target_type varchar(255) NOT NULL,
             customer_groups text DEFAULT NULL,
+            contact_ids text DEFAULT NULL,
             scheduler_id varchar(100) DEFAULT NULL,
             schedule_time datetime DEFAULT NULL,
             cron_expression varchar(100) DEFAULT NULL,
@@ -99,7 +100,8 @@ class WA_Database {
     public static function maybe_upgrade() {
         global $wpdb;
 
-        $table_templates = $wpdb->prefix . 'azguards_whatsapp_templates';
+        $table_templates  = $wpdb->prefix . 'azguards_whatsapp_templates';
+        $table_campaigns  = $wpdb->prefix . 'azguards_whatsapp_campaigns';
 
         if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table_templates ) ) !== $table_templates ) {
             return;
@@ -108,6 +110,13 @@ class WA_Database {
         $column = $wpdb->get_var( "SHOW COLUMNS FROM `$table_templates` LIKE 'last_synced_at'" );
         if ( null === $column ) {
             $wpdb->query( "ALTER TABLE `$table_templates` ADD COLUMN last_synced_at datetime DEFAULT NULL AFTER updated_at" );
+        }
+
+        if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table_campaigns ) ) === $table_campaigns ) {
+            $column = $wpdb->get_var( "SHOW COLUMNS FROM `$table_campaigns` LIKE 'contact_ids'" );
+            if ( null === $column ) {
+                $wpdb->query( "ALTER TABLE `$table_campaigns` ADD COLUMN contact_ids text DEFAULT NULL AFTER customer_groups" );
+            }
         }
     }
 }

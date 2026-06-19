@@ -122,3 +122,35 @@ function wa_display_contact_sync_notices() {
         }
     }
 }
+
+/**
+ * Display Unsynced Users Banner
+ */
+add_action( 'admin_notices', 'wa_display_unsynced_users_banner' );
+function wa_display_unsynced_users_banner() {
+    global $pagenow;
+    if ( $pagenow !== 'users.php' ) {
+        return;
+    }
+
+    if ( ! current_user_can( 'list_users' ) ) {
+        return;
+    }
+
+    global $wpdb;
+
+    // Count users who are missing 'wa_whatsapp_synced' = 1
+    $query = "
+        SELECT COUNT(u.ID) FROM {$wpdb->users} u
+        LEFT JOIN {$wpdb->usermeta} um ON (u.ID = um.user_id AND um.meta_key = 'wa_whatsapp_synced')
+        WHERE um.meta_value IS NULL OR um.meta_value != '1'
+    ";
+    
+    $unsynced_count = (int) $wpdb->get_var( $query );
+
+    if ( $unsynced_count > 0 ) {
+        echo "<div class='notice notice-info is-dismissible'>
+                <p><strong>WhatsApp Connector:</strong> There are <strong>{$unsynced_count}</strong> customers that haven't been synced to WhatTalk yet. Use the Bulk Actions dropdown to sync selected customers.</p>
+              </div>";
+    }
+}

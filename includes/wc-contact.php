@@ -65,17 +65,26 @@ class WA_Contact {
 
         error_log( '[WhatTack Sync Request] User ID: ' . $user_id . ' | Payload: ' . wp_json_encode( $body ) );
 
-        $response = wp_remote_post(
-            $api_url,
-            array(
-                'headers' => array(
-                    'Authorization' => 'Bearer ' . $token,
-                    'Content-Type'  => 'application/json',
-                ),
-                'body'    => wp_json_encode( $body ),
-                'timeout' => 15,
-            )
-        );
+        // Send customer data with retries
+        $response = null;
+        for ( $i = 0; $i < 3; $i++ ) {
+            $response = wp_remote_post(
+                $api_url,
+                array(
+                    'headers' => array(
+                        'Authorization' => 'Bearer ' . $token,
+                        'Content-Type'  => 'application/json',
+                    ),
+                    'body'    => wp_json_encode( $body ),
+                    'timeout' => 15,
+                )
+            );
+
+            if ( ! is_wp_error( $response ) && wp_remote_retrieve_response_code( $response ) < 300 ) {
+                break;
+            }
+            sleep( 1 );
+        }
 
         if ( is_wp_error( $response ) ) {
             return new WP_Error( 'api_error', __( 'Failed to call contact API. ', 'whatsapp-connector' ) . $response->get_error_message() );
@@ -89,8 +98,14 @@ class WA_Contact {
         $data = json_decode( $response_body, true );
 
         if ( $response_code >= 400 ) {
-             $err_msg = $data['message'] ?? $data['error'] ?? "HTTP $response_code";
-             return new WP_Error( 'api_error', $err_msg );
+            $err_msg = $data['message'] ?? $data['error'] ?? "HTTP $response_code";
+
+            // Treat "already exists" as success
+            if ( $response_code === 400 && strpos( $err_msg, 'Contact already exists for this business' ) !== false ) {
+                error_log( "[WA Contact Sync] User ID $user_id already exists on provider. Marking as synced." );
+            } else {
+                return new WP_Error( 'api_error', $err_msg );
+            }
         }
 
         // Mark this user as synced to WhatTack, and store their resolved phone for campaign use
@@ -102,4 +117,90 @@ class WA_Contact {
 
         return $data;
     }
+
+    /**
+     * Core function to sync all unsynced customers to WhatsApp Contact API.
+     *
+     * @return int|WP_Error Number of synced contacts or WP_Error on failure.
+     */
+    public static function wa_sync_contacts() {
+        error_log( "[WA Contact Sync] Starting contact sync execution." );
+
+        global $wpdb;
+
+        // Fetch users who are missing 'wa_whatsapp_synced' = 1
+        $query = "
+            SELECT u.ID FROM {$wpdb->users} u
+            LEFT JOIN {$wpdb->usermeta} um ON (u.ID = um.user_id AND um.meta_key = 'wa_whatsapp_synced')
+            WHERE um.meta_value IS NULL OR um.meta_value != '1'
+        ";
+
+        $unsynced_user_ids = $wpdb->get_col( $query );
+
+        if ( empty( $unsynced_user_ids ) ) {
+            error_log( "[WA Contact Sync] No unsynced contacts found." );
+            return 0;
+        }
+
+        error_log( "[WA Contact Sync] Found " . count( $unsynced_user_ids ) . " unsynced contacts." );
+
+        $counts = [
+            'total'      => count( $unsynced_user_ids ),
+            'successful' => 0,
+            'existing'   => 0,
+            'failed'     => 0,
+            'processed'  => 0,
+        ];
+
+        foreach ( $unsynced_user_ids as $user_id ) {
+            $counts['processed']++;
+
+            $result = self::sync_customer( $user_id );
+
+            if ( is_wp_error( $result ) ) {
+                $counts['failed']++;
+                error_log( "[WA Contact Sync] Failed to sync user ID $user_id: " . $result->get_error_message() );
+            } else {
+                // If it was already marked as synced within sync_customer due to "already exists"
+                // we check if it was a real new sync or an existing one.
+                // However, sync_customer returns the API response data.
+                // For simplicity, if it's not WP_Error, we count based on what happened.
+
+                // Re-checking the body for "already exists" message to distinguish successful from existing
+                // but sync_customer already handles that logic internally and logs it.
+                // To be precise with counts, we could have sync_customer return more info,
+                // but we can also just check the message if available.
+
+                if ( isset( $result['message'] ) && strpos( $result['message'], 'Contact already exists' ) !== false ) {
+                    $counts['existing']++;
+                } else {
+                    $counts['successful']++;
+                }
+            }
+
+            // Limit loop safety for background sync
+            if ( $counts['processed'] >= 100 ) {
+                error_log( "[WA Contact Sync] Batch limit reached (100). Continuing in next run." );
+                break;
+            }
+        }
+
+        error_log( sprintf(
+            "[WA Contact Sync] Sync completed. Total: %d, Processed: %d, Successful: %d, Existing: %d, Failed: %d",
+            $counts['total'], $counts['processed'], $counts['successful'], $counts['existing'], $counts['failed']
+        ) );
+
+        return $counts['successful'] + $counts['existing'];
+    }
+}
+
+/**
+ * Reset sync status when a user profile is updated.
+ */
+add_action( 'profile_update', 'wa_reset_user_sync_status', 10, 2 );
+add_action( 'woocommerce_update_customer', 'wa_reset_user_sync_status', 10, 1 );
+
+function wa_reset_user_sync_status( $user_id ) {
+    update_user_meta( $user_id, 'wa_whatsapp_synced', '0' );
+    error_log( "[WA Contact] Reset sync status for user ID: $user_id due to update." );
 }
