@@ -130,18 +130,33 @@ function wa_process_common_variables( $variable_key, $session_key, $cart, $custo
 
     foreach ( $template_variables as $variable ) {
         $index    = $variable['index'];
-        $property = $variable['max_results'];
+        $property = trim( (string) $variable['max_results'] );
+        $property = preg_replace( '/^\s*var\s+/', '', $property );
+        $property = str_replace( '()', '', $property );
+        $clean_property = $property;
+        if ( strpos( $clean_property, '.' ) !== false ) {
+            $parts          = explode( '.', $clean_property );
+            $clean_property = end( $parts );
+        }
         $value    = '';
 
-        if ( $property === 'customer_first_name' ) {
+        if ( $clean_property === 'customer_first_name' || $clean_property === 'customer_firstname' ) {
             $value = $customer['billing_first_name'] ?? '';
-        } elseif ( $property === 'customer_last_name' ) {
+        } elseif ( $clean_property === 'customer_last_name' || $clean_property === 'customer_lastname' ) {
             $value = $customer['billing_last_name'] ?? '';
-        } elseif ( $property === 'total_amount' ) {
+        } elseif ( $clean_property === 'customer_email' ) {
+            $value = $customer['billing_email'] ?? '';
+        } elseif ( $clean_property === 'grand_total' || $clean_property === 'subtotal' || $clean_property === 'total_amount' ) {
             $value = wc_price( $total );
-        } elseif ( $property === 'items_summary' ) {
+        } elseif ( $clean_property === 'items_count' ) {
+            $value = count( $items );
+        } elseif ( $clean_property === 'items_qty' ) {
+            $value = array_sum( wp_list_pluck( $cart, 'quantity' ) );
+        } elseif ( $clean_property === 'items_summary' || $clean_property === 'cart_items' ) {
             $value = implode( "\n", $items );
-        } elseif ( $property === 'cart_url' || strpos($property, 'url') !== false ) {
+        } elseif ( $clean_property === 'base_url' || $clean_property === 'store_base_url' ) {
+            $value = trailingslashit( get_site_url() );
+        } elseif ( $clean_property === 'cart_url' || strpos($clean_property, 'url') !== false ) {
             $value = wc_get_cart_url();
         }
 

@@ -421,52 +421,15 @@ jQuery(document).ready(function ($) {
         uploader.open();
     });
 
-    // Variable Popup Logic
-    $('#wa_insert_variable').on('click', function (e) {
-        e.stopPropagation();
-        $('#wa_variable_menu').toggle();
-    });
-
-    $(document).on('click', function (e) {
-        if (!$(e.target).closest('.wa-variable-inserter').length) {
-            $('#wa_variable_menu').hide();
-        }
-    });
-
-    $('.wa-premium-variable-menu').on('click', function (e) {
-        e.stopPropagation();
-    });
-
-    // Tab switching
-    $('.wa-var-tab-btn').on('click', function () {
-        var targetId = $(this).data('target');
-        $('.wa-var-tab-btn').removeClass('active');
-        $('.wa-var-panel').removeClass('active');
-
-        $(this).addClass('active');
-        $('#' + targetId).addClass('active');
-    });
-
-    // Insert variable
-    $('.wa-var-item').on('click', function (e) {
-        e.preventDefault();
-        var varString = $(this).data('val');
-
-        var textarea = $('#wa_message_body')[0];
-        var start = textarea.selectionStart;
-        var end = textarea.selectionEnd;
-
-        textarea.value = textarea.value.substring(0, start) + varString + textarea.value.substring(end);
-        textarea.selectionStart = textarea.selectionEnd = start + varString.length;
-        textarea.focus();
-
-        $('#wa_variable_menu').hide();
-        updatePreview();
-    });
-
     $('#wa_save_template').on('click', function () {
         var $btn = $(this);
-        $btn.text('Saving...').prop('disabled', true);
+        var $status = $('#wa_save_status');
+
+        $btn.prop('disabled', true);
+        $btn.find('.wa-save-label').text('Saving…');
+        $btn.find('.wa-save-spinner').show();
+        $btn.find('.wa-save-icon').hide();
+        $status.text('').removeClass('wa-status-ok wa-status-warn wa-status-err');
 
         var templateData = {
             action: 'wa_save_builder_template',
@@ -492,8 +455,6 @@ jQuery(document).ready(function ($) {
             $('.wa-button-item:visible').each(function () {
                 var textVal = $(this).find('.wa-button-text').val() || '';
                 var urlVal = $(this).find('.wa-button-url').val() || '';
-
-                // Only push if there is actually text
                 if (textVal) {
                     templateData.buttons.push({
                         type: $(this).find('.wa-button-type').val(),
@@ -503,7 +464,6 @@ jQuery(document).ready(function ($) {
                 }
             });
         } else {
-            // Parse CAROUSEL cards
             templateData.carousel_cards = [];
             $('.wa-carousel-card').each(function () {
                 var $card = $(this);
@@ -514,7 +474,6 @@ jQuery(document).ready(function ($) {
                     body: $card.find('.wa-card-body').val(),
                     buttons: []
                 };
-
                 $card.find('.wa-card-button-item').each(function () {
                     cardObj.buttons.push({
                         type: $(this).find('.wa-card-btn-type').val(),
@@ -523,7 +482,6 @@ jQuery(document).ready(function ($) {
                         phone_number: $(this).find('.wa-card-btn-type').val() === 'PHONE_NUMBER' ? $(this).find('.wa-card-btn-val').val() : ''
                     });
                 });
-
                 templateData.carousel_cards.push(cardObj);
             });
             templateData.carousel_cards = JSON.stringify(templateData.carousel_cards);
@@ -532,19 +490,22 @@ jQuery(document).ready(function ($) {
         $.post(ajaxurl, templateData, function (response) {
             if (response.success) {
                 var msg = response.data.message || 'Template saved successfully!';
-                var apiIcon = response.data.api_synced ? '✅ ' : '⚠️ ';
-                alert(apiIcon + msg);
                 if (response.data.api_synced) {
-                    // Refresh the page after a brief delay so the grid picks up the new template
-                    setTimeout(function () { window.location.reload(); }, 1500);
+                    $status.text('✅ ' + msg).addClass('wa-status-ok');
+                    setTimeout(function () { window.location.reload(); }, 2000);
+                } else {
+                    $status.text('⚠️ ' + msg).addClass('wa-status-warn');
                 }
             } else {
-                alert('❌ Error: ' + (response.data || 'Unknown error'));
+                $status.text('❌ ' + (response.data || 'Unknown error')).addClass('wa-status-err');
             }
         }).fail(function () {
-            alert('Server error while saving template.');
+            $status.text('❌ Server error while saving.').addClass('wa-status-err');
         }).always(function () {
-            $btn.text('Save Template').prop('disabled', false);
+            $btn.prop('disabled', false);
+            $btn.find('.wa-save-label').text('Save Template');
+            $btn.find('.wa-save-spinner').hide();
+            $btn.find('.wa-save-icon').show();
         });
     });
 

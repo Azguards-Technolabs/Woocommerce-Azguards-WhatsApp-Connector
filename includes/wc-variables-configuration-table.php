@@ -1,4 +1,8 @@
 <?php
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
 /**
  * Custom WooCommerce settings field for WhatsApp Connector plugin.
  */

@@ -269,18 +269,6 @@ class WA_WoocommerceOptions {
                 'customer_ip_address' => 'Customer IP Address',
             ],
 
-            'wa_user_registration_table_data' => [
-                'user_login'    => 'Username',
-                'user_email'    => 'Email Address',
-                'first_name'    => 'First Name',
-                'last_name'     => 'Last Name',
-                'display_name'  => 'Display Name',
-                'user_id'       => 'User ID',
-                'role'          => 'User Role',
-                'registered'    => 'Registration Date',
-                'billing_phone' => 'Billing Phone',
-            ],
-
             'wa_order_shipment_table_data' => [
                 'id' => 'Order ID',
                 'order_number' => 'Order Number',
@@ -371,8 +359,122 @@ class WA_WoocommerceOptions {
                 'abandon_time'   => 'Abandon Time',
                 'cart_items'     => 'Cart Items',
             ],
+
+            'wa_marketing_campaign_table_data' => [
+                'firstname'    => 'Customer First Name',
+                'lastname'     => 'Customer Last Name',
+                'name'         => 'Customer Full Name',
+                'email'        => 'Customer Email',
+                'phone'        => 'Customer Phone',
+                'customer_id'  => 'Customer ID',
+                'mobileNumber' => 'Mobile Number',
+                'countryCode'  => 'Country Code',
+                'businessName' => 'Business Name',
+                'website'      => 'Website',
+            ],
         ];
 
+        $order_option_keys = [
+            'wa_order_creation_table_data',
+            'wa_order_pending_payment_table_data',
+            'wa_order_processing_table_data',
+            'wa_order_on_hold_table_data',
+            'wa_order_failed_table_data',
+            'wa_order_completed_table_data',
+            'wa_order_draft_table_data',
+            'wa_order_invoice_table_data',
+            'wa_order_shipment_table_data',
+            'wa_order_cancellation_table_data',
+            'wa_order_credit_memo_table_data',
+        ];
+
+        foreach ( $order_option_keys as $order_option_key ) {
+            if ( isset( $options[ $order_option_key ] ) ) {
+                $options[ $order_option_key ] = self::get_magento_order_options() + $options[ $order_option_key ];
+            }
+        }
+
+        if ( isset( $options['wa_order_shipment_table_data'] ) ) {
+            $options['wa_order_shipment_table_data'] = self::get_magento_shipment_options() + $options['wa_order_shipment_table_data'];
+        }
+
+        if ( isset( $options['wa_order_invoice_table_data'] ) ) {
+            $options['wa_order_invoice_table_data'] = self::get_magento_invoice_options() + $options['wa_order_invoice_table_data'];
+        }
+
+        if ( isset( $options['wa_order_credit_memo_table_data'] ) ) {
+            $options['wa_order_credit_memo_table_data'] = self::get_magento_creditmemo_options() + $options['wa_order_credit_memo_table_data'];
+        }
+
+        if ( isset( $options['wa_abandon_cart_table_data'] ) ) {
+            $options['wa_abandon_cart_table_data'] = self::get_magento_quote_options() + $options['wa_abandon_cart_table_data'];
+        }
+
         return isset( $options[ $option_key ] ) ? $options[ $option_key ] : [];
+    }
+
+    /**
+     * Basic WooCommerce variable names for template mapping.
+     *
+     * @return array
+     */
+    private static function get_magento_order_options() {
+        return [
+            'entity_id'          => 'Order ID',
+            'increment_id'       => 'Order Number',
+            'status'             => 'Order Status',
+            'customer_email'     => 'Customer Email',
+            'customer_firstname' => 'Customer First Name',
+            'customer_lastname'  => 'Customer Last Name',
+            'grand_total'        => 'Grand Total',
+            'subtotal'           => 'Subtotal',
+            'shipping_amount'    => 'Shipping Amount',
+            'payment_method'     => 'Payment Method',
+            'shipping_method'    => 'Shipping Method',
+            'created_at'         => 'Order Date',
+            'updated_at'         => 'Last Updated',
+            'billing_address'    => 'Billing Address',
+            'shipping_address'   => 'Shipping Address',
+            'store_base_url'     => 'Store Base URL',
+            'items_summary'      => 'Items Summary',
+        ];
+    }
+
+    private static function get_magento_shipment_options() {
+        return [
+            'shipment.tracking_number' => 'Shipment Tracking Number',
+            'shipment.carrier_name'    => 'Shipment Carrier Name',
+            'tracking_number'          => 'Tracking Number',
+            'carrier_name'             => 'Carrier Name',
+        ];
+    }
+
+    private static function get_magento_invoice_options() {
+        return [
+            'invoice.increment_id' => 'Invoice Number',
+            'invoice.grand_total'  => 'Invoice Grand Total',
+        ];
+    }
+
+    private static function get_magento_creditmemo_options() {
+        return [
+            'creditmemo.increment_id' => 'Credit Memo Number',
+            'creditmemo.grand_total'  => 'Credit Memo Grand Total',
+        ];
+    }
+
+    private static function get_magento_quote_options() {
+        return [
+            'cart_id'             => 'Cart ID',
+            'cart_total'          => 'Cart Total',
+            'cart_items'          => 'Cart Items',
+            'items_count'         => 'Cart Items Count',
+            'items_qty'           => 'Cart Items Quantity',
+            'customer_email'      => 'Cart Customer Email',
+            'customer_first_name' => 'Cart Customer First Name',
+            'customer_last_name'  => 'Cart Customer Last Name',
+            'store_base_url'      => 'Store Base URL',
+            'cart_url'            => 'Cart URL',
+        ];
     }
 }

@@ -419,7 +419,11 @@ if ( ! function_exists( 'wa_save_builder_template_handler' ) ) :
             WA_Database::create_tables();
         }
 
-        check_ajax_referer( 'wa_save_builder_template', 'security' );
+        $nonce_valid = wp_verify_nonce( $_POST['security'] ?? '', 'wa_save_builder_template' );
+        if ( ! $nonce_valid ) {
+            error_log( '[WA Builder] Nonce FAILED. Received: ' . ( $_POST['security'] ?? '(empty)' ) . ' | User: ' . get_current_user_id() );
+            wp_send_json_error( __( 'Security check failed. Please refresh the page and try again.', 'whatsapp-connector' ), 403 );
+        }
 
         $hook            = sanitize_text_field( $_POST['hook'] ?? '' );
         $is_standalone   = isset($_POST['is_standalone']) && $_POST['is_standalone'] === 'yes';
@@ -535,18 +539,36 @@ if ( ! function_exists( 'wa_save_builder_template_handler' ) ) :
             $existing_api_id = get_option( "wa_template_{$hook}_assigned_id" );
         }
 
-        // If no real API ID found yet, check database by name and language to avoid 409 Conflict
+        // Always check by template_name first — this catches renamed templates and
+        // prevents duplicates in both the settings-embed and admin-grid flows.
+        $name_match = $wpdb->get_row( $wpdb->prepare(
+            "SELECT entity_id, template_id FROM {$table_name} WHERE template_name = %s ORDER BY entity_id DESC LIMIT 1",
+            $template_name
+        ) );
+        if ( $name_match ) {
+            // Found by name → use this record for the update
+            if ( ! $entity_id ) {
+                $entity_id = (int) $name_match->entity_id;
+            }
+            // Prefer a real API ID (not a local placeholder) from the name match
+            if ( ( ! $existing_api_id || strpos( $existing_api_id, 'tpl_' ) === 0 )
+                 && $name_match->template_id
+                 && strpos( $name_match->template_id, 'tpl_' ) !== 0 ) {
+                $existing_api_id = $name_match->template_id;
+            }
+        }
+
+        // Fallback: check by language as well if still no real API ID
         if ( ! $existing_api_id || strpos( $existing_api_id, 'tpl_' ) === 0 ) {
-            $match = $wpdb->get_row( $wpdb->prepare(
+            $lang_match = $wpdb->get_row( $wpdb->prepare(
                 "SELECT entity_id, template_id FROM {$table_name} WHERE template_name = %s AND language = %s AND template_id NOT LIKE 'tpl_%%' ORDER BY entity_id DESC LIMIT 1",
                 $template_name,
                 $language
             ) );
-            if ( $match ) {
-                $existing_api_id = $match->template_id;
-                // Ensure we update this record locally too
+            if ( $lang_match ) {
+                $existing_api_id = $lang_match->template_id;
                 if ( ! $entity_id ) {
-                    $entity_id = (int) $match->entity_id;
+                    $entity_id = (int) $lang_match->entity_id;
                 }
             }
         }
@@ -580,19 +602,23 @@ if ( ! function_exists( 'wa_save_builder_template_handler' ) ) :
                 'userId'        => $user_id,
             ],
             'body'    => wp_json_encode( $payload ),
-            'timeout' => 30,
+            'timeout' => 10,
         ] );
 
         if ( is_wp_error( $response ) ) {
-            error_log( "[WA Builder] API Error: " . $response->get_error_message() );
-            // Continue to save locally
+            $err_msg = $response->get_error_message();
+            error_log( "[WA Builder] API Error: " . $err_msg );
+            wp_send_json_success( [
+                'message'    => __( 'Template saved locally. API unreachable: ', 'whatsapp-connector' ) . $err_msg,
+                'api_synced' => false,
+            ] );
         }
 
         $response_code = wp_remote_retrieve_response_code( $response );
         $body          = wp_remote_retrieve_body( $response );
         $data          = json_decode( $body, true );
 
-        error_log( "[WA Builder] API Response ({$response_code}): {$body}" );
+        error_log( "[WA Builder] API Response ({$response_code}): " . substr( $body, 0, 500 ) );
 
         // Extract API template ID (the platform returns it under result.id or result.templateId)
         $api_template_id = $data['result']['id'] ?? $data['result']['templateId'] ?? $data['id'] ?? null;
@@ -657,10 +683,26 @@ if ( ! function_exists( 'wa_save_builder_template_handler' ) ) :
             $status = 'APPROVED'; // If it already exists, it might be approved or pending. We'll set it to a state that allows it to be used.
         }
         $existing = null;
-        if ( $is_standalone && $entity_id > 0 ) {
+
+        // 1. If we already resolved an entity_id (standalone edit or name-match above), use it.
+        if ( $entity_id > 0 ) {
             $existing = $entity_id;
-        } else {
-            $existing = $wpdb->get_var( $wpdb->prepare( "SELECT entity_id FROM {$table_name} WHERE template_id = %s", $template_id ) );
+        }
+
+        // 2. Check by template_name — the primary upsert key for both embed & standalone.
+        if ( ! $existing ) {
+            $existing = $wpdb->get_var( $wpdb->prepare(
+                "SELECT entity_id FROM {$table_name} WHERE template_name = %s ORDER BY entity_id DESC LIMIT 1",
+                $template_name
+            ) );
+        }
+
+        // 3. Fallback: check by template_id (API ID).
+        if ( ! $existing && $template_id ) {
+            $existing = $wpdb->get_var( $wpdb->prepare(
+                "SELECT entity_id FROM {$table_name} WHERE template_id = %s",
+                $template_id
+            ) );
         }
 
         $db_data = [
@@ -794,9 +836,8 @@ if ( ! function_exists( 'wa_build_template_api_payload' ) ) :
 
                     if ( $is_url ) {
                         $sampleVal = $clean; // Fallback text for url mapping
-                        if ( ! isset( $varMap[ $clean ] ) ) {
-                            $varMap[ $clean ] = $sampleVal;
-                            $params[]         = $sampleVal;
+                        if ( ! in_array( $sampleVal, $params, true ) ) {
+                            $params[] = $sampleVal;
                         }
                         return '{{' . $clean . '}}';
                     }
@@ -949,9 +990,9 @@ if ( ! function_exists( 'wa_build_template_api_payload' ) ) :
                 $card_entry = [];
 
                 // Card HEADER
-                $c_header_type   = strtoupper( $card['header_type'] ?? 'IMAGE' );
+                $c_header_type   = strtoupper( $card['header_type'] ?? ( $card['header_format'] ?? 'IMAGE' ) );
                 $c_header_handle = trim( $card['header_handle'] ?? '' );
-                if ( in_array( $c_header_type, [ 'IMAGE', 'VIDEO' ] ) ) {
+                if ( in_array( $c_header_type, [ 'IMAGE', 'VIDEO', 'DOCUMENT' ], true ) ) {
                     $card_header = [
                         'type'   => 'HEADER',
                         'format' => $c_header_type,
