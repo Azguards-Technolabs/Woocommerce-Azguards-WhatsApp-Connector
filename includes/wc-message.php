@@ -190,7 +190,7 @@ class WA_Message {
         $response_code = wp_remote_retrieve_response_code( $response );
 
         $curl_command = "curl -X POST '{$api_url}' \\\n"
-            . "-H 'Authorization: Bearer {$token}' \\\n"
+            . "-H 'Authorization: Bearer ********' \\\n"
             . "-H 'Content-Type: application/json' \\\n"
             . "-H 'businessId: " . get_option( 'wa_business_id' ) . "' \\\n"
             . "-H 'userId: " . get_option( 'wa_user_id' ) . "' \\\n"
@@ -202,9 +202,8 @@ class WA_Message {
         error_log( "[WhatsApp] Response Code: " . $response_code );
         error_log( "[WhatsApp] Response Body: " . $response_body );
         error_log( '--------------------------Start ' . $flag . '--------------------------' );
-        error_log( print_r( $body, true ) );
-        error_log( wp_json_encode( $body ) );
-        error_log( print_r( json_decode( $response_body, true ), true ) );
+        // Masked logging for production safety
+        error_log( "[WhatsApp] Request Data (Masked Token)" );
         error_log( '--------------------------End ' . $flag . '--------------------------' );
 
         return json_decode( $response_body, true );
