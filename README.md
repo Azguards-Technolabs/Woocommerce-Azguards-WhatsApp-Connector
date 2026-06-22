@@ -2,6 +2,26 @@
 
 A premium, enterprise-grade WooCommerce plugin to achieve full feature parity with Magento WhatsApp Connector implementations. This plugin enables seamless communication between your WooCommerce store and the WhatTack WhatsApp API.
 
+## 🚀 Deployment Guide
+
+### Phase 1: Preparation
+1.  Compress the `whatsapp-connector` folder into a `whatsapp-connector.zip` file.
+
+### Phase 2: Upload & Activation
+1.  Go to **Plugins > Add New > Upload Plugin** in your WordPress Admin.
+2.  Upload the ZIP and click **Activate**.
+
+### Phase 3: Configuration
+1.  Navigate to **WooCommerce > Settings > WhatsApp Connector**.
+2.  Enter your **Client ID** and **Client Secret**.
+3.  Click **Validate Credentials** to fetch your access token.
+4.  Go to **WooCommerce > WhatTack Templates** and click **Sync Templates**.
+
+### Phase 4: Mapping
+1.  In the **Templates** tab of the settings, select a template for each event.
+2.  Map the placeholders (e.g., `{{1}}` to Order ID) and **Save**.
+
+
 ## 🚀 Key Features
 
 ### 📦 Order & Shipping Notifications
@@ -40,5 +60,6 @@ The plugin uses a secure, transient-based authentication system:
 - **Action Scheduler**: Offloads heavy API tasks to the background to keep your admin dashboard fast.
 - **Meta Status Sync**: Real-time synchronization of template approval statuses from Meta.
 
----
 © 2026 Azguards Technolabs. All Rights Reserved.
+
+---
