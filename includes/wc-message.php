@@ -32,7 +32,7 @@ class WA_Message {
                 $placeholders[] = array(
                     'key'               => (string) $key,
                     'value'             => (string) $val,
-                    'is_user_attribute' => true,
+                    'is_user_attribute' => false, // Parity: Meta/Azguards API expects false for template-mapped variables
                     'attribute_name'    => (string) $key,
                 );
             }
@@ -94,7 +94,15 @@ class WA_Message {
             error_log( "[WhatsApp] ERROR: Template '{$template_id}' is not APPROVED (Status: " . strtoupper( $template_status ) . "). Message delivery is likely to fail." );
         }
 
-        $wa_id = preg_replace( '/[^0-9]/', '', ( $user_detail['countryCode'] ?? '' ) . ( $user_detail['mobileNumber'] ?? '' ) );
+        // Phone Number Normalization (Parity: Duplicate Country Code Stripping)
+        $country_code = preg_replace( '/\D/', '', (string) ( $user_detail['countryCode'] ?? '91' ) );
+        $mobile_number = preg_replace( '/\D/', '', (string) ( $user_detail['mobileNumber'] ?? '' ) );
+        $mobile_number = ltrim( $mobile_number, '0' );
+
+        if ( 0 === strpos( $mobile_number, $country_code ) && strlen( $mobile_number ) > strlen( $country_code ) ) {
+            $mobile_number = substr( $mobile_number, strlen( $country_code ) );
+        }
+        $wa_id = $country_code . $mobile_number;
 
         $components = array();
 
@@ -127,7 +135,7 @@ class WA_Message {
             );
         }
 
-        // 3. FOOTER (API doesn't seem to have placeholders for footer, but we include if exists)
+        // 3. FOOTER
         if ( ! empty( $template['footer'] ) ) {
             $components[] = array(
                 'component_type'   => 'FOOTER',
@@ -136,26 +144,43 @@ class WA_Message {
             );
         }
 
-        // 4. BUTTONS
+        // 4. BUTTONS (Parity: Individual indexed BUTTON components)
         $buttons_data = json_decode( $template['buttons'] ?? '[]', true );
         if ( ! empty( $buttons_data ) ) {
-            $button_placeholders = array();
-            foreach ( $buttons_data as $btn ) {
+            foreach ( $buttons_data as $index => $btn ) {
                 if ( strtoupper( $btn['type'] ?? '' ) === 'URL' ) {
                     $url = $btn['url'] ?? ( $btn['button_url'] ?? '' );
                     $btn_vars = self::extract_placeholders( $url, $template_variables );
                     if ( ! empty( $btn_vars ) ) {
-                        $button_placeholders = array_merge( $button_placeholders, $btn_vars );
+                        $components[] = array(
+                            'component_type'   => 'BUTTON',
+                            'button_type'      => 'URL',
+                            'index'            => (string) $index,
+                            'component_format' => 'TEXT',
+                            'placeholder'      => $btn_vars,
+                        );
                     }
                 }
             }
-            if ( ! empty( $button_placeholders ) ) {
-                $components[] = array(
-                    'component_type'   => 'BUTTONS',
-                    'component_format' => 'TEXT',
-                    'placeholder'      => $button_placeholders,
-                );
+        }
+
+        // 5. COPY CODE Button (Parity: Dedicated logic for coupon_code)
+        $coupon_code = '';
+        foreach ( $template_variables as $key => $val ) {
+            if ( strtolower( (string) $key ) === 'coupon_code' ) {
+                $coupon_code = trim( (string) $val );
+                break;
             }
+        }
+        if ( ! empty( $coupon_code ) ) {
+            if ( mb_strlen( $coupon_code ) > 15 ) {
+                $coupon_code = mb_substr( $coupon_code, 0, 15 );
+            }
+            $components[] = array(
+                'component_type' => 'BUTTON',
+                'button_type'    => 'COPY_CODE',
+                'coupon_code'    => $coupon_code,
+            );
         }
 
         $body = array(
@@ -175,35 +200,34 @@ class WA_Message {
                     'Content-Type'  => 'application/json',
                     'businessId'    => get_option( 'wa_business_id' ),
                     'userId'        => get_option( 'wa_user_id' ),
-
                 ),
                 'body'    => wp_json_encode( $body ),
+                'timeout' => 30,
             )
         );
 
         if ( is_wp_error( $response ) ) {
             error_log( "[WhatsApp] API Connection Error: " . $response->get_error_message() );
-            return new WP_Error( 'api_error', __( 'Failed to call message API.', 'whatsapp-connector' ) );
+            return $response;
         }
 
         $response_body = wp_remote_retrieve_body( $response );
         $response_code = wp_remote_retrieve_response_code( $response );
 
+        // Debug logging (Masked token for production)
         $curl_command = "curl -X POST '{$api_url}' \\\n"
             . "-H 'Authorization: Bearer ********' \\\n"
             . "-H 'Content-Type: application/json' \\\n"
             . "-H 'businessId: " . get_option( 'wa_business_id' ) . "' \\\n"
             . "-H 'userId: " . get_option( 'wa_user_id' ) . "' \\\n"
             . "-d '" . wp_json_encode( $body ) . "'";
-        // Debug logging.
+
+        error_log( '--------------------------Start ' . $flag . '--------------------------' );
         error_log( "[WhatsApp] API URL: " . $api_url );
         error_log( "[WhatsApp] Request Body: " . wp_json_encode( $body ) );
         error_log( "[WhatsApp] cURL Command:\n" . $curl_command );
         error_log( "[WhatsApp] Response Code: " . $response_code );
         error_log( "[WhatsApp] Response Body: " . $response_body );
-        error_log( '--------------------------Start ' . $flag . '--------------------------' );
-        // Masked logging for production safety
-        error_log( "[WhatsApp] Request Data (Masked Token)" );
         error_log( '--------------------------End ' . $flag . '--------------------------' );
 
         return json_decode( $response_body, true );
